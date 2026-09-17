@@ -1,0 +1,39 @@
+name: Release
+on:
+  push:
+    branches: ['release/v*.*.*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    uses: ./.github/workflows/build.yml
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release branch and source version
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_REF" =~ ^release/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Use release/vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          python tools/package.py --expected-version "$version"
+          echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+      - name: Publish versioned archive and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
+            --target "$GITHUB_SHA" --title "ModMenuDecorator $RELEASE_TAG" --generate-notes

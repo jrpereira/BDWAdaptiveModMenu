@@ -1,0 +1,9 @@
+/dist/
+/config.ini
+/artifacts/
+/work/
+__pycache__/
+*.pyc
+*.log
+*.dmp
+*.bak
