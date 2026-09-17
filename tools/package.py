@@ -30,6 +30,8 @@ def build(root=ROOT, out=None, expected=None):
     entries = {f'{MODULE}/{p.relative_to(root).as_posix()}': p for p in (root / 'Scripts').glob('*.lua')}
     for name in ['enabled.txt', 'README.md']:
         entries[f'{MODULE}/{name}'] = root / name
+    for name in ['CHANGELOG.md', 'docs/DEVELOPERS.md', 'examples/ExampleMod/mod_settings.ini', 'examples/ExampleMod/config.example.ini']:
+        entries[f'{MODULE}/{name}'] = root / name
     if MODULE == 'ExtendedControls':
         entries[f'{MODULE}/mod_settings.ini'] = root / 'mod_settings.ini'
         entries[f'{MODULE}/config.example.ini'] = root / 'distribution/config.ini'
