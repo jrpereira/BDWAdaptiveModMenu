@@ -4,6 +4,14 @@ Runtime settings decoration for The Blood of Dawnwalker mods, integrating with
 Dawnwalker Mod Menu without modifying or redistributing its source.
 Current source: **0.1.13 candidate**. See [candidate notes](CHANGELOG.md).
 
+## For mod developers
+
+Read the [developer integration guide](docs/DEVELOPERS.md) for the metadata contract,
+key-code representation, optional paired pickers, Apply/persistence ownership,
+compatibility constraints, and diagnostics. Start with the complete
+[example provider manifest](examples/ExampleMod/mod_settings.ini), which is checked
+by the automated registration test. No provider-side Lua registration call is needed.
+
 ## Installation
 
 With the game closed, copy the archive's `ModMenuDecorator` directory into UE4SS `Mods`.
