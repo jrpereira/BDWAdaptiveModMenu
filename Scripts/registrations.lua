@@ -1,0 +1,186 @@
+local M={}
+local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
+
+local function field(t,wanted)
+    if type(t)~='table' then return nil end
+    local lower=wanted:lower()
+    for k,v in pairs(t) do if tostring(k):lower()==lower then return v end end
+end
+
+local function child(node,wanted)
+    if type(node)~='table' then return nil end
+    local target=wanted:lower()
+    for key,value in pairs(node) do
+        if type(value)=='table' and (tostring(key):lower()==target or tostring(value.__name or ''):lower()==target) then return value end
+    end
+end
+
+local function countEntries(t)
+    local n=0; if type(t)=='table' then for _ in pairs(t) do n=n+1 end end; return n
+end
+
+local function read(path)
+    local f,err=io.open(path,'rb'); if not f then return nil,err or 'open failed' end
+    local data=f:read(262145); f:close()
+    if not data then return nil,'read failed' end
+    if #data>262144 then return nil,'file exceeds 256 KiB limit' end
+    return data:gsub('^\239\187\191','')
+end
+
+local function labelsOf(setting)
+    local labels={}
+    local function add(v) v=trim(v); if v~='' then labels[v]=true end end
+    add(field(setting,'Label') or setting.__id)
+    for k,v in pairs(setting) do if tostring(k):lower():match('^label%.') then add(v) end end
+    return labels
+end
+
+local function decorationOf(setting) return trim(field(setting,'Decoration')):lower() end
+local function kindOf(setting) return trim(field(setting,'Type')):lower() end
+local function dmmKind(kind)
+    if kind=='slider' or kind=='integer' or kind=='percent' or kind=='stepped' then return 'slider' end
+    if kind=='toggle' then return 'toggle' end
+    if kind=='picker' or kind=='preset' then return 'picker' end
+    return nil
+end
+
+-- Reconstruct the parts of choices.parse() that matter for row identity.
+-- DMM preserves supported Setting sections in manifest order.
+local function parseManifest(path,content)
+    local provider={path=path,settings={},choices={},byId={}}
+    local section,current,index=nil,nil,0
+    local mod={}
+    for raw in (content..'\n'):gmatch('([^\n]*)\n') do
+        local line=trim((raw or ''):gsub('\r$',''))
+        local header=line:match('^%[([^%]]+)%]%s*$')
+        if header then
+            section=trim(header); current=nil
+            if section:lower()=='mod' then current=mod
+            elseif section:lower()=='setting' or section:lower():match('^setting%.') then
+                index=index+1; current={__index=index,__section=section}; provider.settings[#provider.settings+1]=current
+            end
+        elseif current and line~='' and not line:match('^[;#]') then
+            local k,v=line:match('^([^=]+)=(.*)$'); if k then current[trim(k)]=trim(v) end
+        end
+    end
+    provider.id=trim(field(mod,'Id')); provider.name=trim(field(mod,'Name'))
+    if provider.id=='' then return nil,'missing [Mod] Id' end
+    if provider.name=='' then provider.name=provider.id end
+
+    local ids={}
+    for _,s in ipairs(provider.settings) do
+        local id=trim(field(s,'Id')); s.__id=(id~='' and id or ('setting_'..s.__index))
+        if ids[s.__id] then return nil,'duplicate setting Id '..s.__id end
+        ids[s.__id]=true; provider.byId[s.__id]=s
+        local kind=dmmKind(kindOf(s))
+        if kind then
+            provider.choices[#provider.choices+1]={
+                id=s.__id, kind=kind, labels=labelsOf(s), raw=s, sourceIndex=s.__index,
+            }
+        end
+    end
+    return provider
+end
+
+local function fileNodePath(file)
+    if type(file)=='table' then
+        local name=tostring(file.__name or ''); local path=file.__absolute_path
+        if name:lower()=='mod_settings.ini' and type(path)=='string' and path~='' then return path end
+    elseif type(file)=='string' and file:lower():match('mod_settings%.ini$') then return file end
+end
+
+local function collectManifestPaths(root,paths,seen,stats,maxDepth)
+    local visited={}
+    local function add(path)
+        if type(path)~='string' or path=='' then return end
+        local key=path:lower(); if seen[key] then return end
+        seen[key]=true; paths[#paths+1]=path; stats.manifestNodes=stats.manifestNodes+1
+    end
+    local function walk(node,depth)
+        if type(node)~='table' or visited[node] or depth>(maxDepth or 12) then return end
+        visited[node]=true; stats.tables=stats.tables+1
+        add(fileNodePath(node))
+        if type(node.__files)=='table' then
+            stats.fileTables=stats.fileTables+1
+            for _,file in pairs(node.__files) do stats.files=stats.files+1; add(fileNodePath(file)) end
+        end
+        for k,v in pairs(node) do if k~='__files' and type(v)=='table' then walk(v,depth+1) end end
+    end
+    walk(root,0)
+end
+
+local function describeModsRoot(mods,log)
+    log('DISCOVERY_ROOT',tostring(mods.__absolute_path or '<no absolute path>'))
+    local names={}
+    for k,v in pairs(mods) do if k~='__files' and type(v)=='table' then names[#names+1]=tostring(v.__name or k) end end
+    table.sort(names); log('DISCOVERY_MODDIRS',#names>0 and table.concat(names,', ') or '<none>')
+    log('DISCOVERY_ROOT_FILES',tostring(countEntries(mods.__files)))
+end
+
+function M.discover(log)
+    local result={decorations={},byProvider={},providerModels={},providerList={},providers=0,manifests=0,modes=0}
+    if type(IterateGameDirectories)~='function' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories unavailable'); return result end
+    local ok,tree=pcall(IterateGameDirectories)
+    if not ok or type(tree)~='table' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories failed: '..tostring(tree)); return result end
+    log('DISCOVERY_TREE','IterateGameDirectories returned '..countEntries(tree)..' root entries')
+
+    local game=child(tree,'Game')
+    if not game then for _,candidate in pairs(tree) do if type(candidate)=='table' and child(candidate,'Binaries') then game=candidate; break end end end
+    local binaries=child(game,'Binaries'); local win64=child(binaries,'Win64'); local ue4ss=child(win64,'ue4ss') or child(win64,'UE4SS'); local mods=child(ue4ss,'Mods')
+    if not mods then log('REGISTRY_UNAVAILABLE','Mods directory unavailable'); return result end
+    describeModsRoot(mods,log)
+
+    local paths,seen={},{}; local stats={tables=0,fileTables=0,files=0,manifestNodes=0}
+    collectManifestPaths(mods,paths,seen,stats,12)
+    log('DISCOVERY_SCAN',string.format('Mods subtree: %d tables, %d file tables, %d files, %d manifest(s)',stats.tables,stats.fileTables,stats.files,#paths))
+    table.sort(paths)
+
+    for _,path in ipairs(paths) do
+        log('MANIFEST_FOUND',path)
+        local content,readErr=read(path)
+        if not content then log('MANIFEST_READ_FAILED',path..': '..tostring(readErr))
+        else
+            local provider,parseErr=parseManifest(path,content)
+            if not provider then log('MANIFEST_PARSE_FAILED',path..': '..tostring(parseErr))
+            else
+                result.manifests=result.manifests+1; result.providers=result.providers+1
+                result.providerModels[provider.id]=provider; result.providerList[#result.providerList+1]=provider
+                log('MANIFEST_PARSED',string.format('%s (%d settings, %d DMM rows)',provider.id,#provider.settings,#provider.choices))
+                for _,setting in ipairs(provider.settings) do
+                    local decoration=decorationOf(setting)
+                    if decoration~='' then log('DECORATION_DECLARED',provider.id..'.'..setting.__id..' = '..decoration..' ['..kindOf(setting)..']') end
+                    if decoration=='keybind' then
+                        local kind=kindOf(setting)
+                        if kind=='integer' or kind=='slider' then
+                            local minimum=tonumber(field(setting,'Minimum')); local maximum=tonumber(field(setting,'Maximum'))
+                            if minimum and maximum and minimum<maximum then
+                                local d={providerId=provider.id,providerName=provider.name,settingId=setting.__id,type='keybind',minimum=minimum,maximum=maximum,labels=labelsOf(setting),path=path}
+                                local pairId=trim(field(setting,'Pair'))
+                                if pairId=='' then pairId=setting.__id..'Mode' end
+                                local mode=provider.byId[pairId]
+                                if mode and decorationOf(mode)=='keybind' and kindOf(mode)=='picker' then
+                                    d.modeId=mode.__id; d.modeLabels=labelsOf(mode); d.modeType='picker'; result.modes=result.modes+1
+                                    d.modeOptions={}
+                                    for label in ((field(mode,'PresetLabels') or field(mode,'PresetValues') or '')..'|'):gmatch('(.-)|') do
+                                        d.modeOptions[#d.modeOptions+1]=trim(label)
+                                    end
+                                    if #d.modeOptions==0 then d.modeOptions={''} end
+                                    log('MODE_PAIR',provider.id..'.'..d.modeId..' -> '..provider.id..'.'..d.settingId)
+                                elseif mode then log('MODE_LEFT_STOCK',provider.id..'.'..mode.__id..' is present but not a decorated keybind picker') end
+                                result.decorations[#result.decorations+1]=d
+                                result.byProvider[provider.id]=result.byProvider[provider.id] or {}; result.byProvider[provider.id][d.settingId]=d
+                                log('KEYBIND_REGISTERED',provider.id..'.'..d.settingId..string.format(' range=%s..%s',tostring(minimum),tostring(maximum)))
+                            else log('DECORATION_SKIPPED',provider.id..'.'..setting.__id..': keybind requires valid Minimum/Maximum') end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return result
+end
+
+function M.get(registry,providerId,settingId)
+    local provider=registry.byProvider and registry.byProvider[providerId]; return provider and provider[settingId] or nil
+end
+return M
