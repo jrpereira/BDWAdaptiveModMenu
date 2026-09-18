@@ -149,6 +149,10 @@ function M.discover(log)
         else
             local provider,parseErr=parseManifest(path,content)
             if not provider then log('MANIFEST_PARSE_FAILED',path..': '..tostring(parseErr))
+            elseif result.providerModels[provider.id] then
+                -- DMM sorts manifest paths and keeps the first provider for each Id.
+                -- Skip the entire duplicate, including settings with different Ids.
+                log('DUPLICATE_PROVIDER_SKIPPED',path..': duplicate Mod Id '..provider.id)
             else
                 result.manifests=result.manifests+1; result.providers=result.providers+1
                 result.providerModels[provider.id]=provider; result.providerList[#result.providerList+1]=provider
