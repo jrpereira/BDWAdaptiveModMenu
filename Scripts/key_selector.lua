@@ -146,11 +146,6 @@ function M.decorate(row,descriptor,log)
     local ss=need(keyOverlay:AddChildToOverlay(selector),'selector slot')
     ss:SetHorizontalAlignment(0); ss:SetVerticalAlignment(0)
 
-    local relay=construct('/Script/UMG.InputKeySelector',tree)
-    relay:SetVisibility(1)
-    need(keyOverlay:AddChildToOverlay(relay),'event relay slot')
-    selector.OnKeySelected:Add(relay,FName('SetSelectedKey'))
-
     local hostSlot=need(row.surface:AddChildToOverlay(keyBox),'key host slot')
     hostSlot:SetHorizontalAlignment(1); hostSlot:SetVerticalAlignment(2)
 
@@ -171,7 +166,7 @@ function M.decorate(row,descriptor,log)
     end
 
     return {
-        descriptor=descriptor,row=row,selector=selector,relay=relay,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
+        descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
         awaitingDmm=false,awaitingTicks=0,targetValue=nil,targetNormalized=nil,pair=nil,labelDirty=nil,
     }
@@ -237,7 +232,6 @@ function M.mergePair(instance,modeRow,log)
     pairButton.IsFocusable=false
     pcall(function() pairButton:SetBackgroundColor({R=0,G=0,B=0,A=0}) end)
     pcall(function() pairButton:SetRenderOpacity(0) end)
-    pairButton.OnClicked:Add(instance.relay,FName('ForceLayoutPrepass'))
     local bs=need(pairOverlay:AddChildToOverlay(pairButton),'pair hit target slot')
     bs:SetHorizontalAlignment(0); bs:SetVerticalAlignment(0)
 
@@ -429,48 +423,101 @@ function M.tick(instance,log)
         syncSelector(instance,backingName)
     end
 
-    if instance.pair and valid(instance.pair.nav) then
-        local clicks=instance.pendingClicks or 0
-        if clicks>0 then
-            local current=tonumber(instance.pair.nav:GetValue()) or 0
-            instance.pair.nav:SetValue((math.floor(current+0.5)+clicks)%instance.pair.count)
-            instance.pendingClicks=0
+    if instance.pair and valid(instance.pair.button) and valid(instance.pair.nav) then
+        local pressed=instance.pair.button:IsPressed()==true
+        if pressed then instance.pair.pressed=true
+        elseif instance.pair.pressed then
+            instance.pair.pressed=false
+            if instance.pair.button:IsHovered()==true then
+                local current=tonumber(instance.pair.nav:GetValue()) or 0
+                local target=(math.floor(current+0.5)+1)%instance.pair.count
+                instance.pair.nav:SetValue(target)
+            end
         end
     end
     updateDirtyPresentation(instance)
     return true
 end
 
-local function transactional(fn,rowOf)
+local function identity(widget)
+    local full=widget:GetFullName()
+    return {path=assert(full:match('^%S+ (.+)$')),full=full,address=Discovery.address(widget)}
+end
+local function resolve(ref)
+    local widget=StaticFindObject(ref.path)
+    if valid(widget) and Discovery.address(widget)==ref.address and widget:GetFullName()==ref.full then return widget end
+end
+local function undo(receipt,allowed)
+    if not receipt then return true end
+    local complete=true
+    for i=#receipt.roots,1,-1 do
+        if not allowed() then return false end
+        local ok=pcall(function()
+            local widget=resolve(receipt.roots[i])
+            if widget then widget:RemoveFromParent() end
+        end)
+        if not ok then complete=false end
+    end
+    for _,entry in ipairs(receipt.saved) do
+        if not allowed() then return false end
+        local ok=pcall(function()
+            local widget=resolve(entry.ref)
+            if widget then
+                if entry.clear then widget[entry.clear](widget)
+                else widget[entry.set](widget,entry.value) end
+            end
+        end)
+        if not ok then complete=false end
+    end
+    return complete
+end
+local function transactional(fn,rowOf,isPair)
     return function(...)
         local args={...}
         local row=rowOf(args)
-        local saved={}
+        local receipt={saved={},roots={}}
         local function save(widget,get,set)
             if not valid(widget) then return end
-            local value=widget[get](widget)
-            saved[#saved+1]={widget=widget,set=set,value=value}
+            receipt.saved[#receipt.saved+1]={ref=identity(widget),set=set,value=widget[get](widget)}
         end
         save(row.slider,'GetRenderOpacity','SetRenderOpacity')
         save(row.valueWidget,'GetRenderOpacity','SetRenderOpacity')
         for _,key in ipairs({'labelBox','surfaceBox','valueBox'}) do
             local widget=row[key]
             if valid(widget) then
-                saved[#saved+1]={widget=widget,set='SetWidthOverride',value=widget.WidthOverride}
+                local override=widget.bOverride_WidthOverride
+                receipt.saved[#receipt.saved+1]={ref=identity(widget),set='SetWidthOverride',value=widget.WidthOverride,
+                    clear=(override==false or override==0) and 'ClearWidthOverride' or nil}
             end
         end
+        if isPair then save(args[2].wrapper,'GetVisibility','SetVisibility') end
         local count=Discovery.childCount(row.surface)
         for i=0,count-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
         local ok,result,err=pcall(fn,table.unpack(args))
-        if ok and result then return result,err end
-        for i=Discovery.childCount(row.surface)-1,count,-1 do
-            pcall(function() row.surface:RemoveChildAt(i) end)
+        for i=count,Discovery.childCount(row.surface)-1 do
+            receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
         end
-        for _,entry in ipairs(saved) do pcall(function() entry.widget[entry.set](entry.widget,entry.value) end) end
+        if ok and result then
+            if isPair then args[1].pairUndo=receipt else result.undo=receipt end
+            return result,err
+        end
+        undo(receipt,function() return true end)
         return nil,ok and err or result
     end
 end
-M.decorate=transactional(M.decorate,function(args) return args[1] end)
-M.mergePair=transactional(M.mergePair,function(args) return args[1].row end)
-
+M.decorate=transactional(M.decorate,function(args) return args[1] end,false)
+M.mergePair=transactional(M.mergePair,function(args) return args[1].row end,true)
+function M.restore(instance,allowed)
+    local pairOK=undo(instance.pairUndo,allowed)
+    local keyOK=undo(instance.undo,allowed)
+    if allowed() then
+        for _,ref in ipairs(instance.liveRefs or {}) do
+            if ref.key=='labelWidget' then
+                local label=resolve(ref)
+                if label then setText(label,instance.baseLabel) end
+            end
+        end
+    end
+    return pairOK and keyOK
+end
 return M
