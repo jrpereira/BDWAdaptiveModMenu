@@ -415,7 +415,7 @@ function M.tick(instance,log)
     local name,readError=selectedName(instance.selector)
     if not name then
         if not instance.readWarning then log('SELECTED_KEY_READ_FAILED',id..' '..tostring(readError)); instance.readWarning=true end
-        return true
+        return false
     end
     instance.readWarning=false
     if not instance.initialized then
