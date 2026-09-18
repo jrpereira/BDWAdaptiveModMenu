@@ -124,3 +124,97 @@ assert(#events==1,'persistent unreadable key repeated its warning')
 s.SelectedKey=chord('R')
 assert(M.tick(i,log) and not i.readWarning and slider.writes==0)
 print('PASS unreadable key reports failure without writes; readable key recovers')
+
+local function failNextText(widget)
+    local original=widget.SetText
+    local fail=true
+    function widget:SetText(value)
+        if fail then fail=false;error('transient text failure') end
+        return original(self,value)
+    end
+end
+i,s,slider=fixture(82,false)
+failNextText(i.keyText)
+s.SelectedKey=chord('K')
+assert(not pcall(M.tick,i,log))
+assert(i.keyText.text=='R' and slider.writes==1)
+assert(M.tick(i,log) and i.keyText.text=='K' and slider.writes==1)
+assert(M.tick(i,log) and slider.writes==1)
+print('PASS failed key presentation recovers without resubmitting the accepted key')
+
+i,s,slider=fixture(82,false)
+failNextText(i.keyText)
+s.SelectedKey=chord('K');assert(not pcall(M.tick,i,log))
+slider.value=84/254
+assert(M.tick(i,log) and i.keyText.text=='T' and slider.writes==1)
+print('PASS stock Restore supersedes a failed key presentation without stale resubmission')
+
+i,s,slider=fixture(82,false)
+slider.value=254/254
+assert(M.tick(i,log) and i.keyText.text=='254' and slider.writes==0)
+slider.value=253/254
+assert(M.tick(i,log) and i.keyText.text=='253' and slider.writes==0)
+s.selecting=true;assert(M.tick(i,log) and i.keyText.text=='...')
+s.selecting=false;assert(M.tick(i,log) and i.keyText.text=='253' and slider.writes==0)
+slider.value=84/254
+assert(M.tick(i,log) and i.keyText.text=='T' and slider.writes==0)
+capture(i,s,'K');assert(i.keyText.text=='K' and slider.writes==1)
+print('PASS unmapped backing values display numerically through changes and cancellation')
+
+i,s,slider=fixture(82,false)
+i.row.valueWidget.text='82 *'
+failNextText(i.row.labelWidget)
+assert(not pcall(M.tick,i,log) and i.labelDirty==false)
+assert(M.tick(i,log) and i.row.labelWidget.text=='Ability *' and i.labelDirty)
+i.pair={valueWidget=textWidget('Hold'),text=textWidget('Tap'),lastText='Tap'}
+failNextText(i.pair.text)
+assert(not pcall(M.tick,i,log) and i.pair.lastText=='Tap')
+assert(M.tick(i,log) and i.pair.text.text=='Hold' and i.pair.lastText=='Hold')
+print('PASS failed dirty and mode label writes remain retryable until successfully rendered')
+
+-- Minimal owned subtree, exercising the production save/adopt implementation.
+local function ownRow(instance)
+    instance.stateWidget=textWidget('')
+    local discovery=package.loaded.widget_discovery
+    discovery.childCount=function(w) return #(w.children or {}) end
+    discovery.childAt=function(w,n) return (w.children or {})[n+1] end
+    discovery.contentOf=function(w) return w and w.content end
+    instance.keyInner.content=instance.keyText
+    local overlay={children={{content=instance.keyInner},{content=obj()},
+        {content=obj()},{content=obj()},{content=obj()},instance.selector,instance.stateWidget}}
+    instance.row.surface={children={{content=overlay}}}
+    instance.row.label='Ability'
+    M.save(instance)
+end
+for _,target in ipairs({'key','dirty'}) do
+    i,s,slider=fixture(82,false)
+    ownRow(i)
+    if target=='dirty' then i.row.valueWidget.text='75 *' end
+    failNextText(target=='key' and i.keyText or i.row.labelWidget)
+    s.SelectedKey=chord('K');assert(not pcall(M.tick,i,log))
+    assert(slider.writes==1)
+    slider.value=84/254;i.row.valueWidget.text='84'
+    local adopted=assert(M.adopt(i.row,i.descriptor,nil,{}))
+    assert(adopted.lastName=='K','rendering failure lost accepted row state')
+    assert(M.tick(adopted,log))
+    assert(slider.writes==1 and math.abs(slider.value-84/254)<1e-8 and adopted.keyText.text=='T')
+end
+print('PASS failed key/dirty rendering followed by Restore and real row adoption never replays a stale key')
+
+for _,cancel in ipairs({false,true}) do
+    i,s,slider=fixture(82,false)
+    ownRow(i)
+    slider.value=254/254;assert(M.tick(i,log))
+    assert(s.SelectedKey.Key.KeyName:ToString()=='None' and slider.writes==0)
+    local adopted=assert(M.adopt(i.row,i.descriptor,nil,{}))
+    assert(adopted.lastName=='None')
+    if cancel then
+        capture(adopted,s,'None') -- Native Escape leaves the neutral key unchanged.
+        assert(slider.writes==0 and slider.value==1 and adopted.keyText.text=='254')
+        capture(adopted,s,'Escape') -- Defensive explicit Escape path.
+        assert(slider.writes==0 and slider.value==1)
+    end
+    capture(adopted,s,'R')
+    assert(slider.writes==1 and math.abs(slider.value-82/254)<1e-8 and adopted.keyText.text=='R')
+end
+print('PASS unmapped row adoption preserves cancellation and allows recapturing its previous key')

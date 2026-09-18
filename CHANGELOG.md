@@ -1,3 +1,10 @@
+# 0.1.34
+
+- Preserve accepted row input state before rendering, so a failed label update followed by reopening cannot overwrite Restore with an old key.
+- Use a neutral capture baseline for unmapped backing values, allowing the previous key to be selected again while preserving cancellation.
+- Recover failed key, mode and dirty-label writes; display unmapped values numerically.
+- Report inactive DMM and invalid decoration metadata at startup; remove stale workspace notes and normalize changelog encoding.
+
 # 0.1.33
 
 - Include the updated developer README in the downloadable package, covering features, integration examples, known limitations and documentation links.
@@ -68,6 +75,6 @@ The hook is installed only while a candidate menu scope is active. Close/load/do
 
 The installed UE4SS DLL has AddDelegate export and delegate GetBindings/Broadcast strings; official UE4SS docs specify multicast Add(target,FName). Actual event delivery and teardown on this native runtime remain a test gate. This candidate does not require or modify the Enhanced Input bridge. No unverified ABI offsets or synthetic UFunctions are used.
 
-0.1.21 native results remain recorded separately: delayed provider opening, visible keys, key-only dirty/Apply/cancel passed; settings FPS observed about200–218 versus7–12 on0.1.20, not a controlled benchmark. Stock DMM Apply mouse-click reliability remains outside this patch.
+0.1.21 native results remain recorded separately: delayed provider opening, visible keys, key-only dirty/Apply/cancel passed; settings FPS observed about200â€“218 versus7â€“12 on0.1.20, not a controlled benchmark. Stock DMM Apply mouse-click reliability remains outside this patch.
 
 No deployment or publication by this task. COORDINATION owns native testing.
