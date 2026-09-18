@@ -1,4 +1,4 @@
-local VERSION='0.1.30'
+local VERSION='0.1.31-rc.1'
 local Registrations=require('registrations')
 local Binding=require('dmm_binding')
 local function log(event,detail)
