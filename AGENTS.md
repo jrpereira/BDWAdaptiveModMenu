@@ -9,7 +9,7 @@ Machine-specific ownership and internal-record locations may be documented in an
 external file named by the local Git setting `bdw.localInstructions`. Read that
 file when configured. Keep it outside public source; direct user instructions
 take precedence. Preserve exact archived version labels as evidence while using
-clear public milestone names (ExtendedControls omits the old `-native` suffix).
+clear public milestone names (QuickslotsForever omits the old `-native` suffix).
 
 - Keep source, tests, maintained public documentation and reviewed defaults in Git.
   Keep personal settings, generated installers/archives, logs, data dumps, internal
