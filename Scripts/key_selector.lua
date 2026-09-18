@@ -348,21 +348,23 @@ local function updateDirtyPresentation(instance)
         local dirty,text=dirtyText(instance.pair.valueWidget); modeDirty=dirty
         local clean=stripDirtySuffix(text)
         if valid(instance.pair.text) and clean~=instance.pair.lastText then
-            setText(instance.pair.text,clean); instance.pair.lastText=clean
+            assert(setText(instance.pair.text,clean),'mode text write failed')
+            instance.pair.lastText=clean
         end
     end
     local dirty=keyDirty or modeDirty
     if dirty~=instance.labelDirty then
-        setText(instance.row.labelWidget,instance.baseLabel..(dirty and ' *' or ''))
+        assert(setText(instance.row.labelWidget,instance.baseLabel..(dirty and ' *' or '')),'dirty label write failed')
         instance.labelDirty=dirty
     end
 end
 
 local function syncSelector(instance,name)
-    if not name then return end
-    instance.selector:SetSelectedKey(chordFor(name))
-    setText(instance.keyText,displayName(name))
-    instance.lastName=name
+    -- Unmapped backing values have no native key. A neutral capture baseline lets
+    -- the previously selected key be chosen again without looking like Escape.
+    instance.selector:SetSelectedKey(chordFor(name or 'None'))
+    if name then instance.keyDisplayText=displayName(name) end
+    instance.lastName=name or 'None'
     instance.lastBackingName=name
 end
 
@@ -412,6 +414,9 @@ function M.tick(instance,log)
     local normalized=instance.row.slider:GetValue()
     local backingValue=math.floor(d.minimum+normalized*(d.maximum-d.minimum)+0.5)
     local backingName=Codes.toName(backingValue)
+    -- Presentation follows the current backing value, including unsupported codes.
+    -- Keep its successful-write cache separate from accepted input state.
+    instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
     local name,readError=selectedName(instance.selector)
     if not name then
         if not instance.readWarning then log('SELECTED_KEY_READ_FAILED',id..' '..tostring(readError)); instance.readWarning=true end
@@ -419,24 +424,19 @@ function M.tick(instance,log)
     end
     instance.readWarning=false
     if not instance.initialized then
-        if backingName then syncSelector(instance,backingName)
-        else
-            instance.lastName=name; instance.lastBackingName=nil
-            setText(instance.keyText,tostring(backingValue))
-        end
+        syncSelector(instance,backingName)
         instance.initialized=true
-        updateDirtyPresentation(instance)
         return true
     end
 
     local selecting=instance.selector:GetIsSelectingKey()==true
     if selecting then
+        instance.keyDisplayText='...'
         if not instance.wasSelecting then
             instance.wasSelecting=true
             instance.captureName=instance.lastName
-            setText(instance.keyText,'...'); styleSelecting(instance)
+            styleSelecting(instance)
         end
-        updateDirtyPresentation(instance)
         return true
     end
 
@@ -446,16 +446,16 @@ function M.tick(instance,log)
         if name=='Escape' or name==instance.captureName then
             -- EscapeKeys cancels natively without changing SelectedKey. No slider,
             -- pending acknowledgement or dirty state is changed by cancellation.
-            syncSelector(instance,instance.captureName)
+            syncSelector(instance,backingName)
+            instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
             instance.captureName=nil
-            updateDirtyPresentation(instance)
             return true
         end
         instance.captureName=nil
     elseif name=='Escape' then
         -- Defensive path if native cancellation was missed between monitor ticks.
-        syncSelector(instance,instance.lastName)
-        updateDirtyPresentation(instance)
+        syncSelector(instance,backingName)
+        instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
         return true
     end
 
@@ -463,7 +463,8 @@ function M.tick(instance,log)
         local keyValue=Codes.toValue(name)
         if keyValue==nil or keyValue<d.minimum or keyValue>d.maximum then
             log('UNSUPPORTED_KEY',id..' '..name)
-            syncSelector(instance,backingName or instance.lastName)
+            syncSelector(instance,backingName)
+            instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
         else
             submit(instance,name,keyValue)
         end
@@ -479,13 +480,21 @@ function M.tick(instance,log)
             instance.pendingClicks=0
         end
     end
-    updateDirtyPresentation(instance)
     return true
 end
 
 local tick=M.tick
 function M.tick(instance,log)
     local result=tick(instance,log)
+    -- Persist accepted input before fallible label rendering. Reopening a row
+    -- must never replay a key merely because its previous display update failed.
+    M.save(instance)
+    if not result then return result end
+    updateDirtyPresentation(instance)
+    if instance and instance.keyDisplayText and instance.keyDisplayText~=instance.renderedKeyText then
+        assert(setText(instance.keyText,instance.keyDisplayText),'key text write failed')
+        instance.renderedKeyText=instance.keyDisplayText
+    end
     M.save(instance)
     return result
 end
