@@ -129,7 +129,7 @@ end
 -- enumeration is used while idle, during gameplay, or during loading.
 function M.activeTrees(host,allowed)
     if not allowed() or not valid(host) then return {} end
-    if not host:IsInViewport() or not host:IsActivated() then return {} end
+    if not host:IsInViewport() or not host:IsActivated() or host:IsVisible()~=true or host:GetIsEnabled()~=true then return {} end
     if not allowed() then return {} end
     local tree=host.WidgetTree
     if not valid(tree) or not allowed() then return {} end

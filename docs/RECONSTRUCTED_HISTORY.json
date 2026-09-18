@@ -15,6 +15,20 @@
         "registrations.lua": "4a5679e6d9a41e0e683589ccd6ae5ebc3050d5cc0f0fa041f4c5a1cf7fc56dc4",
         "widget_discovery.lua": "6039434656d384de65d9650ff9db25a0a1b9656068ad05f75e8723463e82a5e5"
       }
+    },
+    {
+      "version": "0.1.29",
+      "evidence": "outputs/ModMenuDecorator-0.1.29",
+      "runtime_sha256": {
+        "click_delivery.lua": "735fde3d27e6654c46ef8db6e2bd8cd5f841b58bcf5da27ea154fe9de59bf73e",
+        "dmm_binding.lua": "8e0f42e2ec93ed88c31df4c8f32c4faf50bb5cc4e8b1a4d6c49678235dfdbf7a",
+        "key_codes.lua": "b90b996a90e1e46f50358d2bbfe48f7146280d992d99f5053592a4f7689fd097",
+        "key_selector.lua": "80560116912693d29703be681d9d106ab947c10a8dae6a35391ca7f15a913305",
+        "main.lua": "97bfc792d7586fa9f0e30fb41946a736669465a088463bc3acfa19d8bf8b34f0",
+        "menu_scope.lua": "2fee16a03348217592bca2741b93bc11c415f128f9a2de7a6123777ce4ea303e",
+        "registrations.lua": "a91dc97c3c6da9202ca9aeeb1003635dc007c86d40622d58e63979b7cffabd4b",
+        "widget_discovery.lua": "60220f6ee0ac348edb38c837036d565e187f02a10076fd7f5a5a4b756e354d84"
+      }
     }
   ]
 }
