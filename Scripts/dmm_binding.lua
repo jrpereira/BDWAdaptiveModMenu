@@ -50,12 +50,12 @@ function M.install(registry,log)
         for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
         instance.liveRefs=refs
     end
-    local function refresh(instance,allowed)
+    local function refresh(instance,allowed,routes,resolve)
         local fresh={}
         for i,ref in ipairs(instance.liveRefs) do
             if not allowed() then return false end
-            local object=StaticFindObject(ref.path)
-            if not Discovery.valid(object) or Discovery.address(object)~=ref.address or object:GetFullName()~=ref.full then return false end
+            local object=resolve(routes[ref.address])
+            if not object then return false end
             fresh[i]=object
         end
         if not allowed() then return false end
@@ -124,7 +124,7 @@ function M.install(registry,log)
         end
         local state=hosts[path]
         if not state then
-            state={bound={},decorated={},instances={},scanDue=true,attempts=0}
+            state={bound={},decorated={},instances={},scanDue=true,attempts=0,routes={}}
             hosts[path]=state
         end
         boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
@@ -134,6 +134,8 @@ function M.install(registry,log)
             if not allowed() then return end
             local snapshot=snapshots[1]
             if snapshot then
+                state.routes=snapshot.routes
+                local beforeCount=#instances
                 for i=#instances,1,-1 do
                     local instance=instances[i]
                     local wrapperRef
@@ -163,16 +165,24 @@ function M.install(registry,log)
                         if #candidates==1 then bindPage(scroll,rows,candidates[1]) end
                     end
                 end
+                if #instances~=beforeCount and allowed() then
+                    -- New controls were not in the pre-decoration snapshot. Record their
+                    -- routes once after all construction, not once per control or update.
+                    local rebuilt=Discovery.activeTrees(host,allowed)[1]
+                    if rebuilt then state.routes=rebuilt.routes end
+                end
             end
             if next(boundScrolls)==nil then
                 state.attempts=state.attempts+1
                 if state.attempts>=3 then scope:dormant();return end
             else state.attempts=0 end
         end
+        local resolve=Discovery.routeResolver(host,allowed)
+        if not resolve then scope:invalidate('tree root unavailable');return end
         for _,instance in ipairs(instances) do
             if not allowed() then return end
             if not instance.disabled then
-                local freshOK,fresh=pcall(refresh,instance,allowed)
+                local freshOK,fresh=pcall(refresh,instance,allowed,state.routes,resolve)
                 local ok,alive=false,false
                 if freshOK and fresh and allowed() then ok,alive=pcall(KeySelector.tick,instance,log) end
                 if ok and alive then instance.failures=0
