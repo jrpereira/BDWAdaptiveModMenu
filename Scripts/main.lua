@@ -1,4 +1,4 @@
-local VERSION='0.1.12'
+local VERSION='0.1.13'
 local Registrations=require('registrations')
 local Binding=require('dmm_binding')
 local function log(event,detail) print(string.format('[ModMenuDecorator] %s %s\n',event,detail or '')) end

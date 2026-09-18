@@ -3,6 +3,7 @@ local M = {}
 -- Numeric representation used by the first consumer prototype: Windows virtual-key codes.
 -- Unreal FKey names are mapped explicitly; unsupported keys return nil and never touch stock state.
 local byName = {
+    None=0, -- existing unbound numeric value; Escape is deliberately not bindable
     LeftMouseButton=0x01, RightMouseButton=0x02, MiddleMouseButton=0x04,
     ThumbMouseButton=0x05, ThumbMouseButton2=0x06,
 

@@ -24,7 +24,34 @@ local function candidateProviders(registry,rows)
 end
 
 function M.install(registry,log)
-    if type(NotifyOnNewObject)~='function' or type(LoopAsync)~='function' then return false,'NotifyOnNewObject/LoopAsync unavailable' end
+    if type(NotifyOnNewObject)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
+        return false,'NotifyOnNewObject/LoopAsync/ExecuteInGameThread unavailable'
+    end
+
+    -- Async timers only schedule work. All hierarchy access and widget mutation
+    -- runs on the game thread; at most one job per timer may be outstanding.
+    local function dispatch(fn)
+        if EGameThreadMethod and EGameThreadMethod.EngineTick then
+            ExecuteInGameThread(fn,EGameThreadMethod.EngineTick)
+        else ExecuteInGameThread(fn) end
+    end
+    local function loopGameThread(interval,fn)
+        local queued,done=false,false
+        LoopAsync(interval,function()
+            if done then return true end
+            if queued then return false end
+            queued=true
+            local ok,err=pcall(dispatch,function()
+                local success,finished=pcall(fn)
+                queued=false
+                if not success then
+                    done=true; log('GAME_THREAD_JOB_FAILED',tostring(finished))
+                elseif finished then done=true end
+            end)
+            if not ok then queued=false; done=true; log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
+            return done
+        end)
+    end
 
     local pendingSliders={}      -- physical Slider address -> true while waiting for parent hierarchy
     local pendingScrolls={}      -- physical ScrollBox address -> true while bounded discovery is active
@@ -85,7 +112,7 @@ function M.install(registry,log)
         local addr=Discovery.address(scroll); if not addr or pendingScrolls[addr] or boundScrolls[addr] then return end
         pendingScrolls[addr]=true
         local tries=0; local lastCount=-1; local stable=0
-        LoopAsync(16,function()
+        loopGameThread(16,function()
             tries=tries+1
             if not Discovery.valid(scroll) then pendingScrolls[addr]=nil; return true end
             local rows=Discovery.rowsFromScroll(scroll) or {}
@@ -110,7 +137,7 @@ function M.install(registry,log)
         if not sliderAddr or pendingSliders[sliderAddr] or decoratedSliders[sliderAddr] then return end
         pendingSliders[sliderAddr]=true
         local tries=0
-        LoopAsync(16,function()
+        loopGameThread(16,function()
             tries=tries+1
             if not Discovery.valid(slider) then pendingSliders[sliderAddr]=nil; return true end
             -- NotifyOnNewObject fires during UObject construction, before DMM has attached the
@@ -129,10 +156,11 @@ function M.install(registry,log)
     NotifyOnNewObject('/Script/UMG.Slider',function(slider)
         -- Global observation only; no mutation occurs unless the eventual ScrollBox exactly
         -- matches a provider reconstructed from a real mod_settings.ini.
-        scheduleSlider(slider)
+        local ok,err=pcall(dispatch,function() scheduleSlider(slider) end)
+        if not ok then log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
     end)
 
-    LoopAsync(40,function()
+    loopGameThread(40,function()
         local keep={}
         for _,instance in ipairs(instances) do
             local ok,alive=pcall(KeySelector.tick,instance,log)

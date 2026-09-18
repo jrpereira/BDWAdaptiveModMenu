@@ -160,6 +160,11 @@ function M.discover(log)
                                 local mode=provider.byId[pairId]
                                 if mode and decorationOf(mode)=='keybind' and kindOf(mode)=='picker' then
                                     d.modeId=mode.__id; d.modeLabels=labelsOf(mode); d.modeType='picker'; result.modes=result.modes+1
+                                    d.modeOptions={}
+                                    for label in ((field(mode,'PresetLabels') or field(mode,'PresetValues') or '')..'|'):gmatch('(.-)|') do
+                                        d.modeOptions[#d.modeOptions+1]=trim(label)
+                                    end
+                                    if #d.modeOptions==0 then d.modeOptions={''} end
                                     log('MODE_PAIR',provider.id..'.'..d.modeId..' -> '..provider.id..'.'..d.settingId)
                                 elseif mode then log('MODE_LEFT_STOCK',provider.id..'.'..mode.__id..' is present but not a decorated keybind picker') end
                                 result.decorations[#result.decorations+1]=d
