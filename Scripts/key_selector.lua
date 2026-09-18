@@ -172,7 +172,7 @@ function M.decorate(row,descriptor,log)
     }
 end
 
-function M.mergePair(instance,modeRow,log)
+function M.mergePair(instance,modeRow,log,clicks)
     if not instance or not modeRow or modeRow.kind~='picker' then return false,'mode row is not a picker' end
     if not valid(modeRow.wrapper) or not valid(modeRow.nav) or not valid(modeRow.valueWidget) or not valid(instance.row.surface) then return false,'pair widgets unavailable' end
     local tree=instance.row.tree
@@ -267,6 +267,8 @@ function M.mergePair(instance,modeRow,log)
 
     instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
         button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,pressed=false,lastText=initial,count=math.max(1,#labels)}
+
+    assert(clicks,'click delivery unavailable'):attach(instance,pairButton)
 
     -- Collapse only the source wrapper after the proxy exists. No child is removed/reparented.
     local okCollapse,collapseErr=pcall(function() modeRow.wrapper:SetVisibility(1) end)
@@ -423,16 +425,12 @@ function M.tick(instance,log)
         syncSelector(instance,backingName)
     end
 
-    if instance.pair and valid(instance.pair.button) and valid(instance.pair.nav) then
-        local pressed=instance.pair.button:IsPressed()==true
-        if pressed then instance.pair.pressed=true
-        elseif instance.pair.pressed then
-            instance.pair.pressed=false
-            if instance.pair.button:IsHovered()==true then
-                local current=tonumber(instance.pair.nav:GetValue()) or 0
-                local target=(math.floor(current+0.5)+1)%instance.pair.count
-                instance.pair.nav:SetValue(target)
-            end
+    if instance.pair and valid(instance.pair.nav) then
+        local count=instance.pendingClicks or 0
+        if count>0 then
+            local current=tonumber(instance.pair.nav:GetValue()) or 0
+            instance.pair.nav:SetValue((math.floor(current+0.5)+count)%instance.pair.count)
+            instance.pendingClicks=0
         end
     end
     updateDirtyPresentation(instance)
@@ -502,6 +500,7 @@ local function transactional(fn,rowOf,isPair)
             return result,err
         end
         undo(receipt,function() return true end)
+        if isPair then args[1].pair=nil end
         return nil,ok and err or result
     end
 end
