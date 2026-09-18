@@ -10,6 +10,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import package_manifest
 
 class ManifestPackageTests(unittest.TestCase):
+    def test_tools_directories_rejected_at_any_depth_and_case(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'main.lua').write_text('local VERSION="1.2.3"')
+            spec = {'module': 'Example', 'version_file': 'main.lua', 'version_pattern': 'VERSION="([^"]+)"'}
+            for module, dest in [('Example', 'Tools/helper.py'), ('Example', 'nested/tOoLs/helper.py'), ('TOOLS', 'main.lua')]:
+                with self.subTest(module=module, dest=dest):
+                    spec.update(module=module, files={dest: 'main.lua'})
+                    (root / 'release-manifest.json').write_text(json.dumps(spec))
+                    with self.assertRaisesRegex(ValueError, 'Tools directory'):
+                        package_manifest.build(root)
+            spec.update(module='Example', files={'Scripts/toolset.lua': 'main.lua'})
+            (root / 'release-manifest.json').write_text(json.dumps(spec))
+            with ZipFile(package_manifest.build(root)) as bundle:
+                self.assertIn('Example/Scripts/toolset.lua', bundle.namelist())
+
     def test_versions(self):
         for value in ['0.3.53', '0.3.53-native.1', '1.2.3-rc.2', '1.2.3+build.7']:
             self.assertTrue(package_manifest.valid_version(value), value)
