@@ -17,6 +17,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -24,16 +26,25 @@ jobs:
         env:
           RELEASE_REF: ${{ github.ref_name }}
         run: |
-          if [[ ! "$RELEASE_REF" =~ ^release/v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "Use release/vMAJOR.MINOR.PATCH" >&2
+          if [[ "$RELEASE_REF" != release/v* ]]; then
+            echo "Use release/vSEMVER" >&2
             exit 1
           fi
-          version="${BASH_REMATCH[1]}"
+          version="${RELEASE_REF#release/v}"
           python tools/package.py --expected-version "$version"
           echo "RELEASE_TAG=v$version" >> "$GITHUB_ENV"
+          if git rev-parse --verify "refs/tags/v$version" >/dev/null 2>&1; then
+            actual="$(git rev-parse "refs/tags/v$version^{commit}")"
+            if [[ "$actual" != "$GITHUB_SHA" ]]; then
+              echo "Existing tag points to another commit; refusing publication" >&2
+              exit 1
+            fi
+          fi
       - name: Publish versioned archive and checksum
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 \
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 "${flags[@]}" \
             --target "$GITHUB_SHA" --title "ModMenuDecorator $RELEASE_TAG" --generate-notes
