@@ -34,12 +34,34 @@ function M.install(log,onChange,onRetire)
         -- construction notification. Do not retain the returned wrapper.
         return context:get()
     end
+    local function discoverOwner()
+        if scope.loading or type(FindAllOf)~='function' then return false end
+        local found
+        -- Event-only recovery: native owner activation can bypass the reflected hook.
+        -- Use the same two owner classes as DMM; never enumerate generic widgets.
+        for _,className in ipairs({'WBP_MainMenu_C','WBP_PauseMenu_C'}) do
+            for _,candidate in ipairs(FindAllOf(className) or {}) do
+                if candidate and candidate:IsValid() and candidate:IsVisible() and candidate:IsActivated() then
+                    local full=candidate:GetFullName()
+                    if not full:find('Default__',1,true) and full:match('^'..className..' ') then
+                        local path=full:match('^%S+ (.+)$')
+                        local address=tostring(candidate:GetAddress())
+                        if found and found.address~=address then return false end
+                        found={path=path,address=address}
+                    end
+                end
+            end
+        end
+        if not found then return false end
+        scope.owner=found
+        return true
+    end
     local function activate(context)
         if not scope.enabled then return end
         local widget=liveContext(context)
         local name=widget:GetFName():ToString()
         local ownerName=name:match('^WBP_MainMenu_C_') or name:match('^WBP_PauseMenu_C_')
-        if not ownerName and (scope.loading or not scope.owner or not name:match('^CommonActivatableWidget_')) then return end
+        if not ownerName and (scope.loading or not name:match('^CommonActivatableWidget_')) then return end
         local full=widget:GetFullName()
         if full:match('^WBP_MainMenu_C ') or full:match('^WBP_PauseMenu_C ') then
             if not widget:IsVisible() or not widget:IsActivated() then return end
@@ -52,7 +74,8 @@ function M.install(log,onChange,onRetire)
             scope.owner={path=path,address=address}
             return
         end
-        if scope.loading or not scope.owner or not name:match('^CommonActivatableWidget_') then return end
+        if scope.loading or not name:match('^CommonActivatableWidget_') then return end
+        if not scope.owner and not discoverOwner() then return end
         if not scope:ownerLive() then return end
         local path=full:match('^%S+ (.+)$')
         if not path then return end
@@ -109,6 +132,7 @@ function M.install(log,onChange,onRetire)
         {'/Script/DogwoodUI.SaveWindowBase:RequestLoadSave',protect(load),noop},
         {'/Script/DogwoodUI.DWLoadingScreenWidget:NotifyLoadingScreenStarted',protect(load),noop},
         {'/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex',noop,protect(pageChanged)},
+        {'/Script/DogwoodUI.UIFrontend:ShowPauseMenu',noop,protect(function() scope.loading=false end)},
     }
     local registered={}
     for _,spec in ipairs(specs) do
