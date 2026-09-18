@@ -168,7 +168,7 @@ function M.decorate(row,descriptor,log)
     return {
         descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
-        awaitingDmm=false,awaitingTicks=0,targetValue=nil,targetNormalized=nil,pair=nil,labelDirty=nil,
+        pair=nil,labelDirty=nil,
     }
 end
 
@@ -302,7 +302,7 @@ local function syncSelector(instance,name)
     instance.lastBackingName=name
 end
 
-local function submit(instance,name,keyValue,log)
+local function submit(instance,name,keyValue)
     local d=instance.descriptor
     local normalized=(keyValue-d.minimum)/(d.maximum-d.minimum)
     local previous=instance.row.slider:GetValue()
@@ -314,8 +314,6 @@ local function submit(instance,name,keyValue,log)
     -- remains responsible for pending/dirty/Apply. Never write its config.
     instance.row.slider:SetValue(normalized)
     syncSelector(instance,name)
-    instance.awaitingDmm=true; instance.awaitingTicks=0
-    instance.targetValue=keyValue; instance.targetNormalized=normalized
 end
 
 function M.tick(instance,log)
@@ -397,31 +395,15 @@ function M.tick(instance,log)
         return true
     end
 
-    if instance.awaitingDmm then
-        instance.awaitingTicks=instance.awaitingTicks+1
-        local text=stripDirtySuffix(Discovery.textOf(instance.row.valueWidget) or '')
-        local observed=tonumber(text)
-        if backingValue~=instance.targetValue then
-            -- Restore/Reset/other stock action superseded the request. Never
-            -- reassert a stale captured value over a subsequent DMM operation.
-            instance.awaitingDmm=false
-        elseif observed==instance.targetValue then
-            instance.awaitingDmm=false
-        elseif instance.awaitingTicks>=25 then
-            instance.awaitingDmm=false
-            log('DMM_DIRTY_WAIT',id..' target='..tostring(instance.targetValue)..' stockText='..text)
-        end
-    end
-
     if name~=instance.lastName then
         local keyValue=Codes.toValue(name)
         if keyValue==nil or keyValue<d.minimum or keyValue>d.maximum then
             log('UNSUPPORTED_KEY',id..' '..name)
             syncSelector(instance,backingName or instance.lastName)
         else
-            submit(instance,name,keyValue,log)
+            submit(instance,name,keyValue)
         end
-    elseif backingName~=instance.lastBackingName and not instance.awaitingDmm then
+    elseif backingName~=instance.lastBackingName then
         syncSelector(instance,backingName)
     end
 
