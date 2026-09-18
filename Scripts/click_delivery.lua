@@ -2,17 +2,17 @@
 -- function. The scoped hook queues Lua counts; it never updates stock widgets.
 local M={}
 function M.new(log)
-    local self={owners={},path=nil,epoch=nil,hook=nil}
+    local self={owners={},path=nil,hook=nil}
     function self:close()
-        self.path=nil;self.epoch=nil
+        self.path=nil
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
         if self.hook then
             local ok,err=pcall(UnregisterHook,'/Script/UMG.Widget:ForceLayoutPrepass',self.hook[1],self.hook[2])
             if ok then self.hook=nil else log('CLICK_HOOK_FAILED',tostring(err)) end
         end
     end
-    function self:open(path,epoch)
-        self.path=path;self.epoch=epoch
+    function self:open(path)
+        self.path=path
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
         if self.hook then return true end
         local ok,pre,post=pcall(RegisterHook,'/Script/UMG.Widget:ForceLayoutPrepass',function() end,function(context)
@@ -27,7 +27,7 @@ function M.new(log)
             if not success then log('CLICK_EVENT_FAILED',tostring(err)) end
         end)
         if not ok or type(pre)~='number' or type(post)~='number' then
-            self.path=nil;self.epoch=nil
+            self.path=nil
             return false,tostring(pre)
         end
         self.hook={pre,post}

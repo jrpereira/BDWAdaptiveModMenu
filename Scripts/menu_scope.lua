@@ -2,12 +2,12 @@
 local M={}
 function M.install(log,onChange,onRetire)
     if type(RegisterHook)~='function' or type(UnregisterHook)~='function' then return nil,'RegisterHook/UnregisterHook unavailable' end
-    local scope={enabled=false,epoch=0,path=nil,address=nil,loading=false,reset=0}
+    local scope={enabled=false,epoch=0,path=nil,address=nil,loading=false}
     local function revoke(reason,loading)
         scope.epoch=scope.epoch+1
         scope.path=nil;scope.address=nil;scope.treeAddress=nil
-        if loading then scope.loading=true;scope.reset=scope.reset+1 end
-        if onChange then onChange(nil,scope.epoch,scope.reset) end
+        if loading then scope.loading=true end
+        if onChange then onChange(nil,scope.epoch) end
     end
     local function retireAll()
         if onRetire then onRetire(nil) end
@@ -59,17 +59,17 @@ function M.install(log,onChange,onRetire)
         scope.epoch=scope.epoch+1
         scope.path=path;scope.address=tostring(widget:GetAddress())
         scope.treeAddress=tostring(widget.WidgetTree:GetAddress())
-        if onChange then onChange(path,scope.epoch,scope.reset) end
+        if onChange then onChange(path,scope.epoch) end
     end
     local function pageChanged(context)
         if not scope.enabled or scope.loading or not scope.path then return end
         -- DMM constructs its switchers directly under the active host's WidgetTree.
         -- The callback context and its outer are synchronous fresh wrappers.
-        if not scope:ownerLive() then return end
         local tree=liveContext(context):GetOuter()
         if tostring(tree:GetAddress())~=scope.treeAddress then return end
+        if not scope:ownerLive() then return end
         scope.epoch=scope.epoch+1
-        if onChange then onChange(scope.path,scope.epoch,scope.reset) end
+        if onChange then onChange(scope.path,scope.epoch) end
     end
     local function deactivated(context)
         if not scope.enabled or not scope.owner then return end
@@ -123,7 +123,7 @@ function M.install(log,onChange,onRetire)
     scope.enabled=true
     function scope:current()
         if not self.enabled or self.loading then return nil end
-        return self.path,self.epoch,self.reset
+        return self.path,self.epoch
     end
     function scope:matches(path,epoch)
         return self.enabled and not self.loading and self.owner~=nil and self.path==path and self.epoch==epoch
@@ -131,7 +131,7 @@ function M.install(log,onChange,onRetire)
     function scope:dormant()
         -- Retain the host identity for a later page event; retire all queued work.
         self.epoch=self.epoch+1
-        if onChange then onChange(nil,self.epoch,self.reset) end
+        if onChange then onChange(nil,self.epoch) end
     end
     function scope:invalidate(reason)
         if self.path then revoke(reason,false) end

@@ -26,7 +26,7 @@ local function keyNameFromChord(chord)
         local key=chord.Key
         local keyName=key and key.KeyName
         if keyName and keyName.ToString then return keyName:ToString() end
-        return tostring(keyName)
+        if type(keyName)=='string' and keyName~='' then return keyName end
     end)
     if ok and name and name~='' then return name end
 end
@@ -40,24 +40,15 @@ local function selectedName(selector)
 end
 
 local textLib=nil
-local function setText(widget,text,step)
-    -- TextBlock:SetText expects FText. Never probe it with a raw Lua string:
-    -- a native UE4SS access violation cannot reach a pcall fallback.
-    local function call(name,fn)
-        if step then return step(name,fn) end
-        return fn()
-    end
+local function setText(widget,text)
+    -- SetText requires FText; Lua pcall cannot contain a native access violation.
     local ok,result=pcall(function()
-        if not call('validate_text_target',function() return valid(widget) end) then return false end
-        if not valid(textLib) then
-            textLib=call('resolve_text_library',function()
-                return StaticFindObject('/Script/Engine.Default__KismetTextLibrary')
-            end)
-        end
-        if not call('validate_text_library',function() return valid(textLib) end) then return false end
-        local value=call('convert_string_to_ftext',function() return textLib:Conv_StringToText(text) end)
+        if not valid(widget) then return false end
+        if not valid(textLib) then textLib=StaticFindObject('/Script/Engine.Default__KismetTextLibrary') end
+        if not valid(textLib) then return false end
+        local value=textLib:Conv_StringToText(text)
         if value==nil then return false end
-        call('assign_ftext',function() widget:SetText(value) end)
+        widget:SetText(value)
         return true
     end)
     if not ok then return false,result end
@@ -181,8 +172,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     -- Keep the stock picker row and every stock child UObject in place. Build the visible
     -- proxy from widgets whose composition paths are already proven elsewhere in MMD:
     -- SizeBox -> Overlay -> Border -> TextBlock, plus a transparent sibling Button used
-    -- only as a hit target. In particular, never call Button:SetContent(); v0.1.9 showed
-    -- a native UE4SS failure immediately after constructing the TextBlock on that path.
+    -- only as a hit target. Keep text in the sibling border composition.
     local pairBox=construct('/Script/UMG.SizeBox',tree)
     pairBox:SetWidthOverride(150); pairBox:SetHeightOverride(32)
 
@@ -200,33 +190,19 @@ function M.mergePair(instance,modeRow,log,clicks)
     local innerSlot=need(pairFrame:SetContent(pairInner),'pair inner content')
     innerSlot:SetHorizontalAlignment(0); innerSlot:SetVerticalAlignment(0)
 
-    -- Each BEGIN is emitted before crossing into UE4SS; END proves that call returned.
-    -- pcall reports Lua errors only. It cannot contain a native access violation.
-    local function textStep(_,fn) return fn() end
-    local textClass=textStep('resolve_class',function() return class('/Script/UMG.TextBlock') end)
-    local pairText=textStep('construct_object',function() return StaticConstructObject(textClass,tree) end)
-    textStep('validate_object',function() return need(pairText,'pair TextBlock construction') end)
-    textStep('set_justification',function() pairText:SetJustification(1) end)
-    textStep('set_overflow',function() pairText:SetTextOverflowPolicy(1) end)
+    local pairText=construct('/Script/UMG.TextBlock',tree)
+    pairText:SetJustification(1); pairText:SetTextOverflowPolicy(1)
+    pcall(function() pairText:SetFont(modeRow.valueWidget.Font) end)
     pcall(function()
-        local font=textStep('read_mode_font',function() return modeRow.valueWidget.Font end)
-        textStep('set_font',function() pairText:SetFont(font) end)
+        pairText:SetRenderTransformPivot({X=0.5,Y=0.5})
+        pairText:SetRenderScale({X=0.88,Y=0.88})
     end)
-    pcall(function()
-        textStep('set_pivot',function() pairText:SetRenderTransformPivot({X=0.5,Y=0.5}) end)
-        textStep('set_scale',function() pairText:SetRenderScale({X=0.88,Y=0.88}) end)
-    end)
-    local initial=stripDirtySuffix(textStep('read_mode_text',function() return Discovery.textOf(modeRow.valueWidget) end) or '')
-    local textSet=textStep('set_initial_text',function()
-        local ok,err=setText(pairText,initial,textStep)
-        if not ok then error('pair initial text unavailable: '..tostring(err or 'invalid widget, library, or FText'),0) end
-        return true
-    end)
-    local rawSlot=textStep('attach_text',function() return pairInner:SetContent(pairText) end)
-    local ts=textStep('validate_slot',function() return need(rawSlot,'pair text content') end)
-    textStep('slot_horizontal',function() ts:SetHorizontalAlignment(0) end)
-    textStep('slot_vertical',function() ts:SetVerticalAlignment(2) end)
-    textStep('slot_padding',function() ts:SetPadding({Left=4,Top=0,Right=4,Bottom=0}) end)
+    local initial=stripDirtySuffix(Discovery.textOf(modeRow.valueWidget) or '')
+    local textSet,textError=setText(pairText,initial)
+    if not textSet then error('pair initial text unavailable: '..tostring(textError or 'invalid widget, library, or FText'),0) end
+    local ts=need(pairInner:SetContent(pairText),'pair text content')
+    ts:SetHorizontalAlignment(0); ts:SetVerticalAlignment(2)
+    ts:SetPadding({Left=4,Top=0,Right=4,Bottom=0})
 
     local pairButton=construct('/Script/UMG.Button',tree)
     pairButton.IsFocusable=false
@@ -242,10 +218,9 @@ function M.mergePair(instance,modeRow,log,clicks)
     slot:SetHorizontalAlignment(3); slot:SetVerticalAlignment(2)
 
     -- Measure every supported label after attaching the Slate widget. If desired
-    -- size is unavailable, estimate from the same font and report the fallback.
+    -- size is unavailable, estimate from the same font.
     local labels=instance.descriptor.modeOptions or {initial}
     local maxWidth=0
-    local measured=true
     for _,label in ipairs(labels) do
         setText(pairText,label)
         local ok,width=pcall(function()
@@ -253,7 +228,6 @@ function M.mergePair(instance,modeRow,log,clicks)
             return tonumber(pairText:GetDesiredSize().X)
         end)
         if not ok or not width or width<=0 then
-            measured=false
             local fontSize=18
             pcall(function() fontSize=tonumber(modeRow.valueWidget.Font.Size) or fontSize end)
             width=(utf8.len(label) or #label)*fontSize*0.7
@@ -266,7 +240,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     instance.row.surfaceBox:SetWidthOverride(96+8+pairWidth)
 
     instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
-        button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,pressed=false,lastText=initial,count=math.max(1,#labels)}
+        button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,lastText=initial,count=math.max(1,#labels)}
 
     assert(clicks,'click delivery unavailable'):attach(instance,pairButton)
 
@@ -291,7 +265,6 @@ local function updateDirtyPresentation(instance)
         setText(instance.row.labelWidget,instance.baseLabel..(dirty and ' *' or ''))
         instance.labelDirty=dirty
     end
-    return keyDirty,modeDirty
 end
 
 local function syncSelector(instance,name)

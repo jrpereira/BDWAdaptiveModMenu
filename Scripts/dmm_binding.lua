@@ -33,7 +33,6 @@ function M.install(registry,log)
     local clicks=ClickDelivery.new(log)
     local scope,schedule
     local hosts={}
-    local boundScrolls,decoratedSliders,instances
     local pending={}
     local function ledger(instance)
         local refs={}
@@ -64,14 +63,15 @@ function M.install(registry,log)
         for i,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=fresh[i] end
         return true
     end
-    local function bindPage(scroll,rows,provider)
+    local function bindPage(state,scroll,rows,provider)
+        local boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
         local scrollAddr=Discovery.address(scroll); if not scrollAddr or boundScrolls[scrollAddr] then return true end
-        local page={providerId=provider.id,scrollName=scroll:GetFName():ToString(),rowsById={},ordered={},instances={}}
+        local page={providerId=provider.id,scrollName=scroll:GetFName():ToString(),rowsById={},ordered={}}
 
         -- Capture semantic identity for every DMM row before any visual pairing/mutation.
         for i,setting in ipairs(provider.choices) do
             local row=rows[i]
-            local binding={providerId=provider.id,settingId=setting.id,sourceIndex=i,row=row,kind=row.kind,wrapperAddr=Discovery.address(row.wrapper),wrapperName=row.wrapper:GetFName():ToString()}
+            local binding={settingId=setting.id,row=row,kind=row.kind,wrapperAddr=Discovery.address(row.wrapper),wrapperName=row.wrapper:GetFName():ToString()}
             page.rowsById[setting.id]=binding; page.ordered[i]=binding
         end
 
@@ -87,7 +87,7 @@ function M.install(registry,log)
                     if sliderAddr and not decoratedSliders[sliderAddr] then
                         local ok,instanceOrErr=pcall(KeySelector.decorate,binding.row,descriptor,log)
                         if ok and instanceOrErr then
-                            decoratedSliders[sliderAddr]=true; binding.instance=instanceOrErr; page.instances[#page.instances+1]=instanceOrErr; instances[#instances+1]=instanceOrErr
+                            decoratedSliders[sliderAddr]=true; instances[#instances+1]=instanceOrErr
                             if descriptor.modeId then
                                 local modeBinding=page.rowsById[descriptor.modeId]
                                 if modeBinding and modeBinding.kind=='picker' then
@@ -114,6 +114,9 @@ function M.install(registry,log)
                 end
             end
         end
+        -- Page lifetime checks need primitive identity only, not stale row wrappers.
+        page.rowsById=nil
+        for _,binding in ipairs(page.ordered) do binding.row=nil end
         return true
     end
 
@@ -132,7 +135,7 @@ function M.install(registry,log)
             state={bound={},decorated={},instances={},scanDue=true,attempts=0,routes={}}
             hosts[path]=state
         end
-        boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
+        local boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
         if state.scanDue then
             state.scanDue=false
             local snapshots=Discovery.activeTrees(host,allowed)
@@ -140,7 +143,6 @@ function M.install(registry,log)
             local snapshot=snapshots[1]
             if snapshot then
                 state.routes=snapshot.routes
-                local beforeCount=#instances
                 for i=#instances,1,-1 do
                     local instance=instances[i]
                     local wrapperRef
@@ -162,13 +164,14 @@ function M.install(registry,log)
                     end
                     if not alive then boundScrolls[addr]=nil end
                 end
+                local beforeCount=#instances
                 for _,scroll in ipairs(snapshot.scrolls) do
                     if not allowed() then return end
                     local addr=Discovery.address(scroll)
                     if not boundScrolls[addr] then
                         local rows=Discovery.rowsFromScroll(scroll) or {}
                         local candidates=candidateProviders(registry,rows)
-                        if #candidates==1 then bindPage(scroll,rows,candidates[1]) end
+                        if #candidates==1 then bindPage(state,scroll,rows,candidates[1]) end
                     end
                 end
                 if #instances~=beforeCount and allowed() then
@@ -246,14 +249,13 @@ function M.install(registry,log)
     local err
     scope,err=MenuScope.install(log,function(path,epoch)
         if not path then clicks:close();return end
-        local clickOK,clickError=clicks:open(path,epoch)
+        local clickOK,clickError=clicks:open(path)
         if not clickOK then log('CLICK_HOOK_FAILED',tostring(clickError)) end
         local state=hosts[path]
         if state then
             state.scanDue=true;state.attempts=0
             for _,instance in ipairs(state.instances) do
                 instance.wasSelecting=false
-                if instance.pair then instance.pair.pressed=false end
             end
         end
         schedule(path,epoch,0)
@@ -261,7 +263,6 @@ function M.install(registry,log)
     end,function(path)
         if path and not hosts[path] then return end
         if path then hosts[path]=nil else hosts={} end
-        boundScrolls,decoratedSliders,instances=nil,nil,nil
         clicks:retire(path)
     end)
     if not scope then return false,err end
