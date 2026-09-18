@@ -26,43 +26,13 @@ end
 
 function M.install(registry,log)
     if not registry.dmmEligible then return false,'DMM direct-folder dependency inactive' end
-    for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread','UnregisterHook'}) do
+    for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread'}) do
         if type(_G[api])~='function' then return false,api..' unavailable' end
     end
     local scope,schedule
-    local hosts,relayOwners={},{}
+    local hosts={}
     local boundScrolls,decoratedSliders,instances
-    local activePath
     local pending={}
-    local eventHooks={}
-    local function unhook()
-        for _,h in ipairs(eventHooks) do pcall(UnregisterHook,h[1],h[2],h[3]) end
-        eventHooks={}
-    end
-    local function event(kind,context)
-        local path,epoch=scope:current()
-        if not path then return end
-        local receiver=context:get()
-        local owner=relayOwners[tostring(receiver:GetAddress())]
-        if not owner or owner.path~=path then return end
-        local instance=owner.instance
-        if receiver:GetFullName()~=instance.relayFullName then return end
-        if kind=='click' then instance.pendingClicks=(instance.pendingClicks or 0)+1 end
-        schedule(path,epoch,0)
-    end
-    local function hookEvents()
-        if #eventHooks>0 then return true end
-        for _,spec in ipairs({{'/Script/UMG.Widget:ForceLayoutPrepass','click'},
-                              {'/Script/UMG.InputKeySelector:SetSelectedKey','key'}}) do
-            local ok,pre,post=pcall(RegisterHook,spec[1],function() end,function(context)
-                local success,err=pcall(event,spec[2],context)
-                if not success then log('EVENT_FAILED',tostring(err)) end
-            end)
-            if not ok then unhook();return false end
-            eventHooks[#eventHooks+1]={spec[1],pre,post}
-        end
-        return true
-    end
     local function ledger(instance)
         local refs={}
         local function add(target,keys)
@@ -74,13 +44,11 @@ function M.install(registry,log)
                 end
             end
         end
-        add(instance,{'selector','relay','keyBox','keyFrame','keyInner','keyText'})
+        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText'})
         add(instance.row,{'slider','wrapper','labelWidget','valueWidget'})
         if instance.pair then add(instance.pair,{'button','inner','nav','valueWidget','text'}) end
         for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
         instance.liveRefs=refs
-        instance.relayId=Discovery.address(instance.relay)
-        instance.relayFullName=instance.relay:GetFullName()
     end
     local function refresh(instance,allowed)
         local fresh={}
@@ -131,8 +99,13 @@ function M.install(registry,log)
                                     log('PAIR_FAILED',provider.id..'.'..binding.settingId..': mode binding unavailable')
                                 end
                             end
-                            ledger(instanceOrErr)
-                            relayOwners[instanceOrErr.relayId]={instance=instanceOrErr,path=activePath}
+                            local recorded,recordError=pcall(ledger,instanceOrErr)
+                            if not recorded then
+                                instanceOrErr.disabled=true
+                                pcall(KeySelector.restore,instanceOrErr,function() return true end)
+                                instanceOrErr.liveRefs={}
+                                log('DECORATE_FAILED',tostring(recordError))
+                            end
                         else log('DECORATE_FAILED',provider.id..'.'..binding.settingId..': '..tostring(instanceOrErr)) end
                     else log('SKIP_ALREADY_DECORATED',provider.id..'.'..binding.settingId) end
                 end
@@ -151,14 +124,12 @@ function M.install(registry,log)
         end
         local state=hosts[path]
         if not state then
-            state={bound={},decorated={},instances={},ticks=10,attempts=0}
+            state={bound={},decorated={},instances={},scanDue=true,attempts=0}
             hosts[path]=state
         end
-        activePath=path
         boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
-        state.ticks=state.ticks+1
-        if state.ticks>=10 then
-            state.ticks=0
+        if state.scanDue then
+            state.scanDue=false
             local snapshots=Discovery.activeTrees(host,allowed)
             if not allowed() then return end
             local snapshot=snapshots[1]
@@ -170,7 +141,6 @@ function M.install(registry,log)
                         if ref.target==instance.row and ref.key=='wrapper' then wrapperRef=ref;break end
                     end
                     if wrapperRef and not snapshot.widgets[wrapperRef.address] then
-                        relayOwners[instance.relayId]=nil
                         for _,ref in ipairs(instance.liveRefs) do
                             if ref.key=='slider' then decoratedSliders[ref.address]=nil end
                         end
@@ -201,47 +171,76 @@ function M.install(registry,log)
         end
         for _,instance in ipairs(instances) do
             if not allowed() then return end
-            if refresh(instance,allowed) then
-                local ok,alive=pcall(KeySelector.tick,instance,log)
-                if ok and alive then instance.failed=false
-                elseif not instance.failed then
-                    instance.failed=true
-                    log('SELECTOR_TICK_FAILED',tostring(alive))
+            if not instance.disabled then
+                local freshOK,fresh=pcall(refresh,instance,allowed)
+                local ok,alive=false,false
+                if freshOK and fresh and allowed() then ok,alive=pcall(KeySelector.tick,instance,log) end
+                if ok and alive then instance.failures=0
+                else
+                    instance.failures=(instance.failures or 0)+1
+                    if instance.failures==1 then log('SELECTOR_TICK_FAILED','temporarily unavailable') end
+                    if instance.failures>=3 and allowed() then
+                        instance.disabled=true
+                        local restored,result=pcall(KeySelector.restore,instance,allowed)
+                        if not restored or not result then log('RESTORE_FAILED','control recovery incomplete') end
+                    end
                 end
-                -- Keep ownership on failure: the next fresh update can recover.
             end
         end
-        -- No UObject access or new work after this generation is revoked.
         if allowed() then schedule(path,epoch,100) end
+    end
+    local function fail(path,epoch,event,err)
+        pending[epoch]=nil
+        if scope:matches(path,epoch) then
+            log(event,tostring(err))
+            scope:invalidate(event)
+        end
     end
     schedule=function(path,epoch,delay)
         if not scope or not scope:matches(path,epoch) or pending[epoch] then return end
         pending[epoch]=true
-        ExecuteWithDelay(delay,function()
+        local queued,queueError=pcall(ExecuteWithDelay,delay,function()
             if not scope:matches(path,epoch) then pending[epoch]=nil;return end
-            ExecuteInGameThread(function()
-                pending[epoch]=nil
-                if not scope:matches(path,epoch) then return end
-                if EngineTickAvailable==false then scope:invalidate('engine tick unavailable');return end
-                local ok,err=pcall(tick,path,epoch)
-                if not ok then log('DISCOVERY_FAILED',tostring(err));scope:invalidate('discovery failed') end
-            end,EGameThreadMethod and EGameThreadMethod.EngineTick or nil)
+            local dispatched,dispatchError=pcall(function()
+                local function work()
+                    pending[epoch]=nil
+                    if not scope:matches(path,epoch) then return end
+                    if EngineTickAvailable==false then scope:invalidate('engine tick unavailable');return end
+                    local ok,err=pcall(tick,path,epoch)
+                    if not ok then fail(path,epoch,'DISCOVERY_FAILED',err) end
+                end
+                if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
+                else ExecuteInGameThread(work) end
+            end)
+            if not dispatched then fail(path,epoch,'GAME_THREAD_DISPATCH_FAILED',dispatchError) end
         end)
+        if not queued then fail(path,epoch,'SCHEDULING_FAILED',queueError) end
+    end
+    -- Structural fallback has its own elapsed-delay schedule; updates cannot speed it up.
+    local function structural(path,epoch)
+        local ok,err=pcall(ExecuteWithDelay,1000,function()
+            if not scope:matches(path,epoch) then return end
+            local state=hosts[path]
+            if state then state.scanDue=true end
+            structural(path,epoch)
+        end)
+        if not ok then fail(path,epoch,'SCHEDULING_FAILED',err) end
     end
     local err
     scope,err=MenuScope.install(log,function(path,epoch)
-        if not path then
-            unhook()
-            for _,owner in pairs(relayOwners) do owner.instance.pendingClicks=0 end
-            return
-        end
-        for _,owner in pairs(relayOwners) do owner.instance.pendingClicks=0 end
-        if not hookEvents() then scope:invalidate('delegate relay hooks unavailable');return end
+        if not path then return end
         local state=hosts[path]
-        if state then state.ticks=10;state.attempts=0 end
+        if state then
+            state.scanDue=true;state.attempts=0
+            for _,instance in ipairs(state.instances) do
+                instance.wasSelecting=false
+                if instance.pair then instance.pair.pressed=false end
+            end
+        end
         schedule(path,epoch,0)
+        if scope:matches(path,epoch) then structural(path,epoch) end
     end)
-    if not scope then unhook();return false,err end
+    if not scope then return false,err end
     return true
 end
 return M

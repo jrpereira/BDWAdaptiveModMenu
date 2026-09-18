@@ -1,7 +1,7 @@
 -- Lifecycle callbacks retain strings/numbers only, never a UObject for later use.
 local M={}
 function M.install(log,onChange)
-    if type(RegisterHook)~='function' then return nil,'RegisterHook unavailable' end
+    if type(RegisterHook)~='function' or type(UnregisterHook)~='function' then return nil,'RegisterHook/UnregisterHook unavailable' end
     local scope={enabled=false,epoch=0,path=nil,address=nil,loading=false,reset=0}
     local function revoke(reason,loading)
         scope.epoch=scope.epoch+1
@@ -19,8 +19,8 @@ function M.install(log,onChange)
         local widget=liveContext(context)
         local name=widget:GetFName():ToString()
         if name:match('^WBP_MainMenu_') then
+            revoke('main menu',false)
             scope.loading=false
-            log('MENU_SCOPE_REARMED','main menu')
             return
         end
         if scope.loading or not name:match('^CommonActivatableWidget_') then return end
@@ -41,7 +41,6 @@ function M.install(log,onChange)
     local function rearm()
         if not scope.enabled then return end
         scope.loading=false
-        log('MENU_SCOPE_REARMED','pause menu')
     end
     local function protect(fn)
         return function(...)
@@ -63,12 +62,15 @@ function M.install(log,onChange)
         {'/Script/DogwoodUI.DWLoadingScreenWidget:NotifyLoadingScreenStarted',protect(load),noop},
         {'/Script/DogwoodUI.UIFrontend:ShowPauseMenu',noop,protect(rearm)},
     }
+    local registered={}
     for _,spec in ipairs(specs) do
-        local ok,err=pcall(RegisterHook,spec[1],spec[2],spec[3])
-        if not ok then
+        local ok,pre,post=pcall(RegisterHook,spec[1],spec[2],spec[3])
+        if not ok or type(pre)~='number' or type(post)~='number' then
             scope.enabled=false
-            return nil,spec[1]..': '..tostring(err)
+            for _,hook in ipairs(registered) do pcall(UnregisterHook,hook[1],hook[2],hook[3]) end
+            return nil,spec[1]..': '..tostring(pre)
         end
+        registered[#registered+1]={spec[1],pre,post}
     end
     scope.enabled=true
     function scope:current()
