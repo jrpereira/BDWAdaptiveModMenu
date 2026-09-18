@@ -1,0 +1,20 @@
+{
+  "baseline": "2cf642b56815fbfa8e6b71f9d94f0f4a57221aac",
+  "note": "Runtime-only reconstruction; no historical tests, release or native-validation claims inferred. Contemporary commit timestamps.",
+  "milestones": [
+    {
+      "version": "0.1.22",
+      "evidence": "outputs/ModMenuDecorator-0.1.22",
+      "runtime_sha256": {
+        "click_delivery.lua": "2f2d5ba67d714e2920476ab429a52261b9f340695005ef1c07a14caf98367fdc",
+        "dmm_binding.lua": "032b10368c8ef43a26015ffd76cf598da23763e293643ce8ea83fe1694ef5f72",
+        "key_codes.lua": "b90b996a90e1e46f50358d2bbfe48f7146280d992d99f5053592a4f7689fd097",
+        "key_selector.lua": "53740656ffd5047e7860f85f20b790b8ed6fc50d60b3ae441caf41833a68dc48",
+        "main.lua": "4d30f40513de6494b7e6e01ab791f7e3e51648931e46b1555a08c6bc72d639c4",
+        "menu_scope.lua": "238c88d130b31f794720027bf78be96c6210a15de472c7118371115bc555bcdb",
+        "registrations.lua": "4a5679e6d9a41e0e683589ccd6ae5ebc3050d5cc0f0fa041f4c5a1cf7fc56dc4",
+        "widget_discovery.lua": "6039434656d384de65d9650ff9db25a0a1b9656068ad05f75e8723463e82a5e5"
+      }
+    }
+  ]
+}

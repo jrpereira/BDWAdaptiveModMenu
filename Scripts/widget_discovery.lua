@@ -4,9 +4,28 @@ local function valid(o)
     local ok,result=pcall(function() return o:IsValid() end); return ok and result==true
 end
 M.valid=valid
+-- Engine UClasses/CDOs have engine lifetime; do not cache runtime widget wrappers.
+local classCache={}
+local function isA(widget,name)
+    local class=classCache[name]
+    if not valid(class) then
+        class=StaticFindObject('/Script/UMG.'..name)
+        if not valid(class) then return false end
+        classCache[name]=class
+    end
+    return widget:IsA(class)
+end
+local textLibrary
+local knownClasses={'ScrollBox','SizeBox','HorizontalBox','Overlay','Button','TextBlock','Slider','WidgetTree'}
 local function className(o)
     if not valid(o) then return '' end
-    local ok,name=pcall(function() return o:GetClass():GetFName():ToString() end); return ok and name or ''
+    -- Never construct a UClass wrapper from a candidate's ClassPrivate pointer.
+    -- Call only on widgets freshly obtained from the current live menu tree.
+    for _,name in ipairs(knownClasses) do
+        local ok,match=pcall(function() return isA(o,name) end)
+        if ok and match then return name end
+    end
+    return ''
 end
 M.className=className
 local function childAt(panel,index) local ok,v=pcall(function() return panel:GetChildAt(index) end); return ok and v or nil end
@@ -18,7 +37,8 @@ local function textOf(widget)
     local ok,v=pcall(function()
         local t=widget:GetText(); if type(t)=='string' then return t end
         if t and t.ToString then return t:ToString() end
-        local lib=StaticFindObject('/Script/Engine.Default__KismetTextLibrary'); return lib and lib:IsValid() and lib:Conv_TextToString(t) or tostring(t)
+        if not valid(textLibrary) then textLibrary=StaticFindObject('/Script/Engine.Default__KismetTextLibrary') end
+        return valid(textLibrary) and textLibrary:Conv_TextToString(t) or tostring(t)
     end)
     return ok and tostring(v) or nil
 end
@@ -104,5 +124,63 @@ function M.rowsFromScroll(scroll)
         if row then rows[#rows+1]=row end
     end
     return rows
+end
+-- The exact host was activated through the lifecycle hook. No global object
+-- enumeration is used while idle, during gameplay, or during loading.
+function M.activeTrees(host,allowed)
+    if not allowed() or not valid(host) then return {} end
+    if not host:IsInViewport() or not host:IsActivated() then return {} end
+    if not allowed() then return {} end
+    local tree=host.WidgetTree
+    if not valid(tree) or not allowed() then return {} end
+    local root=tree.RootWidget
+    if not valid(root) then return {} end
+    local snapshot={widgets={},names={},scrolls={},routes={},count=0}
+    local complete=true
+    local function walk(widget,depth,parentRoute,index)
+        if not allowed() then complete=false;return end
+        if depth>40 or snapshot.count>=4096 then complete=false;return end
+        if not valid(widget) then return end
+        local addr=address(widget)
+        if not addr or snapshot.widgets[addr] then return end
+        snapshot.widgets[addr]=widget
+        snapshot.names[addr]=widget:GetFName():ToString()
+        local route={parent=parentRoute,index=index,address=addr,name=snapshot.names[addr]}
+        snapshot.routes[addr]=route
+        snapshot.count=snapshot.count+1
+        if not allowed() then complete=false;return end
+        if isA(widget,'ScrollBox') then snapshot.scrolls[#snapshot.scrolls+1]=widget end
+        if isA(widget,'PanelWidget') then
+            for i=0,widget:GetChildrenCount()-1 do walk(widget:GetChildAt(i),depth+1,route,i) end
+        end
+    end
+    walk(root,0)
+    if complete and allowed() then return {snapshot} end
+    return {}
+end
+-- Resolve through current widget ownership, never through retained native wrappers.
+-- Routes contain only primitive identities/indices. The cache lives for one update.
+function M.routeResolver(host,allowed)
+    if not allowed() or not valid(host) then return nil end
+    local tree=host.WidgetTree
+    if not allowed() or not valid(tree) then return nil end
+    local root=tree.RootWidget
+    if not allowed() or not valid(root) then return nil end
+    local cache={}
+    local function resolve(route)
+        if not route or not allowed() then return nil end
+        if cache[route]~=nil then return cache[route] or nil end
+        local widget
+        if route.parent then
+            local parent=resolve(route.parent)
+            if parent and allowed() then widget=parent:GetChildAt(route.index) end
+        else widget=root end
+        if not allowed() then return nil end
+        if valid(widget) and address(widget)==route.address and widget:GetFName():ToString()==route.name then
+            cache[route]=widget;return widget
+        end
+        cache[route]=false
+    end
+    return resolve
 end
 return M
