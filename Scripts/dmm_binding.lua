@@ -24,49 +24,47 @@ local function candidateProviders(registry,rows)
 end
 
 function M.install(registry,log)
-    if type(NotifyOnNewObject)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
-        return false,'NotifyOnNewObject/LoopAsync/ExecuteInGameThread unavailable'
+    if not registry.dmmEligible then return false,'DMM direct-folder dependency inactive' end
+    if type(FindAllOf)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
+        return false,'FindAllOf/LoopAsync/ExecuteInGameThread unavailable'
     end
-
-    -- Async timers only schedule work. All hierarchy access and widget mutation
-    -- runs on the game thread; at most one job per timer may be outstanding.
-    local function dispatch(fn)
-        if EGameThreadMethod and EGameThreadMethod.EngineTick then
-            ExecuteInGameThread(fn,EGameThreadMethod.EngineTick)
-        else ExecuteInGameThread(fn) end
+    -- Instance identities are strings/addresses captured while fresh. Replace
+    -- every widget used by tick with the current snapshot's wrapper before use.
+    local function ledger(instance)
+        local refs={}
+        local function add(target,keys)
+            for _,key in ipairs(keys) do
+                local object=target[key]
+                if object then refs[#refs+1]={target=target,key=key,address=Discovery.address(object),name=object:GetFName():ToString()} end
+            end
+        end
+        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText'})
+        add(instance.row,{'slider','wrapper','labelWidget','valueWidget'})
+        if instance.pair then add(instance.pair,{'button','inner','nav','valueWidget','text'}) end
+        for index,edge in ipairs(instance.keyEdges or {}) do
+            refs[#refs+1]={target=instance.keyEdges,key=index,address=Discovery.address(edge),name=edge:GetFName():ToString()}
+        end
+        instance.liveRefs=refs
     end
-    local function loopGameThread(interval,fn)
-        local queued,done=false,false
-        LoopAsync(interval,function()
-            if done then return true end
-            if queued then return false end
-            queued=true
-            local ok,err=pcall(dispatch,function()
-                local success,finished=pcall(fn)
-                queued=false
-                if not success then
-                    done=true; log('GAME_THREAD_JOB_FAILED',tostring(finished))
-                elseif finished then done=true end
-            end)
-            if not ok then queued=false; done=true; log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
-            return done
-        end)
+    local function refresh(instance,widgets,names)
+        for _,ref in ipairs(instance.liveRefs) do
+            if not widgets[ref.address] or names[ref.address]~=ref.name then return false end
+        end
+        for _,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=widgets[ref.address] end
+        return true
     end
-
-    local pendingSliders={}      -- physical Slider address -> true while waiting for parent hierarchy
-    local pendingScrolls={}      -- physical ScrollBox address -> true while bounded discovery is active
-    local boundScrolls={}        -- physical ScrollBox address -> semantic page binding
-    local decoratedSliders={}   -- physical stock Slider address -> true
-    local instances={}          -- one global monitor list, no per-row LoopAsync callbacks
+    local boundScrolls={}
+    local decoratedSliders={}
+    local instances={}
 
     local function bindPage(scroll,rows,provider)
         local scrollAddr=Discovery.address(scroll); if not scrollAddr or boundScrolls[scrollAddr] then return true end
-        local page={providerId=provider.id,scroll=scroll,rowsById={},ordered={},instances={}}
+        local page={providerId=provider.id,scrollName=scroll:GetFName():ToString(),rowsById={},ordered={},instances={}}
 
         -- Capture semantic identity for every DMM row before any visual pairing/mutation.
         for i,setting in ipairs(provider.choices) do
             local row=rows[i]
-            local binding={providerId=provider.id,settingId=setting.id,sourceIndex=i,row=row,kind=row.kind}
+            local binding={providerId=provider.id,settingId=setting.id,sourceIndex=i,row=row,kind=row.kind,wrapperAddr=Discovery.address(row.wrapper),wrapperName=row.wrapper:GetFName():ToString()}
             page.rowsById[setting.id]=binding; page.ordered[i]=binding
             log('ROW_BOUND',provider.id..'.'..setting.id..' index='..i..' kind='..row.kind)
         end
@@ -99,6 +97,7 @@ function M.install(registry,log)
                                     log('PAIR_FAILED',provider.id..'.'..binding.settingId..': mode binding unavailable')
                                 end
                             end
+                            ledger(instanceOrErr)
                         else log('DECORATE_FAILED',provider.id..'.'..binding.settingId..': '..tostring(instanceOrErr)) end
                     else log('SKIP_ALREADY_DECORATED',provider.id..'.'..binding.settingId) end
                 end
@@ -107,71 +106,72 @@ function M.install(registry,log)
         return true
     end
 
-    local function scheduleScroll(scroll)
-        if not Discovery.valid(scroll) then return end
-        local addr=Discovery.address(scroll); if not addr or pendingScrolls[addr] or boundScrolls[addr] then return end
-        pendingScrolls[addr]=true
-        local tries=0; local lastCount=-1; local stable=0
-        loopGameThread(16,function()
-            tries=tries+1
-            if not Discovery.valid(scroll) then pendingScrolls[addr]=nil; return true end
-            local rows=Discovery.rowsFromScroll(scroll) or {}
-            if #rows==lastCount then stable=stable+1 else lastCount=#rows; stable=0 end
-            local candidates=candidateProviders(registry,rows)
-            if #candidates==1 then
-                pendingScrolls[addr]=nil; bindPage(scroll,rows,candidates[1]); return true
+    local queued,stopped=false,false
+    local function tick()
+        local widgets,names,scrolls={},{},{}
+        for _,snapshot in ipairs(Discovery.activeTrees()) do
+            for addr,widget in pairs(snapshot.widgets) do widgets[addr]=widget; names[addr]=snapshot.names[addr] end
+            for _,scroll in ipairs(snapshot.scrolls) do scrolls[#scrolls+1]=scroll end
+        end
+        -- Closed/absent menus provide no current wrappers. Keep only dormant Lua
+        -- identities; do not dereference them or redecorate a surviving reopened tree.
+        if next(widgets)==nil then return end
+        local recognized=false
+        for _,scroll in ipairs(scrolls) do
+            local addr=Discovery.address(scroll)
+            local page=boundScrolls[addr]
+            if page and names[addr]==page.scrollName then recognized=true;break end
+            if #candidateProviders(registry,Discovery.rowsFromScroll(scroll) or {})==1 then recognized=true;break end
+        end
+        -- An unrelated CommonUI host is not evidence that our dormant page died.
+        if not recognized then return end
+        for addr,page in pairs(boundScrolls) do
+            local alive=widgets[addr] and names[addr]==page.scrollName
+            for _,binding in ipairs(page.ordered) do
+                if not widgets[binding.wrapperAddr] or names[binding.wrapperAddr]~=binding.wrapperName then alive=false;break end
             end
-            -- Wait for populate() to finish. Reject only after the row count has settled.
-            if tries>=40 or (stable>=8 and tries>=12) then
-                pendingScrolls[addr]=nil
-                if #rows>0 then log('PAGE_REJECTED','scroll='..addr..' rows='..#rows..' candidates='..#candidates) end
-                return true
-            end
-            return false
-        end)
-    end
-
-    local function scheduleSlider(slider)
-        if not Discovery.valid(slider) then return end
-        local sliderAddr=Discovery.address(slider)
-        if not sliderAddr or pendingSliders[sliderAddr] or decoratedSliders[sliderAddr] then return end
-        pendingSliders[sliderAddr]=true
-        local tries=0
-        loopGameThread(16,function()
-            tries=tries+1
-            if not Discovery.valid(slider) then pendingSliders[sliderAddr]=nil; return true end
-            -- NotifyOnNewObject fires during UObject construction, before DMM has attached the
-            -- Slider to its row/ScrollBox. Resolve ancestry only after the hierarchy exists.
-            local scroll=Discovery.ancestorOfClass(slider,'ScrollBox',10)
-            if scroll then
-                pendingSliders[sliderAddr]=nil
-                scheduleScroll(scroll)
-                return true
-            end
-            if tries>=32 then pendingSliders[sliderAddr]=nil; return true end
-            return false
-        end)
-    end
-
-    NotifyOnNewObject('/Script/UMG.Slider',function(slider)
-        -- Global observation only; no mutation occurs unless the eventual ScrollBox exactly
-        -- matches a provider reconstructed from a real mod_settings.ini.
-        local ok,err=pcall(dispatch,function() scheduleSlider(slider) end)
-        if not ok then log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
-    end)
-
-    loopGameThread(40,function()
+            if not alive then boundScrolls[addr]=nil end
+        end
         local keep={}
+        decoratedSliders={}
         for _,instance in ipairs(instances) do
-            local ok,alive=pcall(KeySelector.tick,instance,log)
-            if ok and alive then keep[#keep+1]=instance
-            elseif not ok then log('SELECTOR_TICK_FAILED',tostring(alive)) end
+            if refresh(instance,widgets,names) then
+                local ok,alive=pcall(KeySelector.tick,instance,log)
+                if ok and alive then
+                    keep[#keep+1]=instance
+                    decoratedSliders[Discovery.address(instance.row.slider)]=true
+                elseif not ok then log('SELECTOR_TICK_FAILED',tostring(alive)) end
+            end
         end
         instances=keep
-        return false
+        for _,scroll in ipairs(scrolls) do
+            local addr=Discovery.address(scroll)
+            if not boundScrolls[addr] then
+                local rows=Discovery.rowsFromScroll(scroll) or {}
+                local candidates=candidateProviders(registry,rows)
+                if #candidates==1 then bindPage(scroll,rows,candidates[1]) end
+            end
+        end
+    end
+    LoopAsync(100,function()
+        if stopped then return true end
+        if queued then return false end
+        if EngineTickAvailable==false then return false end
+        queued=true
+        local function work()
+            if EngineTickAvailable==false then queued=false;return end
+            local ok,err=pcall(tick)
+            queued=false
+            if not ok then stopped=true; log('DISCOVERY_STOPPED',tostring(err)) end
+        end
+        local ok,err=pcall(function()
+            if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
+            else ExecuteInGameThread(work) end
+        end)
+        if not ok then queued=false;stopped=true;log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
+        return stopped
     end)
-
-    log('DMM_DISCOVERY_READY','deferred hierarchy + strict manifest-order page matching + non-reparenting paired proxy + protected merge enabled')
+    log('DMM_DISCOVERY_READY','fresh active host trees; no Slider notifications; live identity refresh; strict provider page matching')
     return true
 end
 return M

@@ -130,9 +130,40 @@ function M.discover(log)
     if not mods then log('REGISTRY_UNAVAILABLE','Mods directory unavailable'); return result end
     describeModsRoot(mods,log)
 
+    -- Loader eligibility, not proof of runtime initialization. Never search an
+    -- archived/nested folder for the DMM dependency or start UI work without it.
+    local function fileNamed(node,wanted)
+        for _,file in pairs(type(node)=='table' and node.__files or {}) do
+            if type(file)=='table' and tostring(file.__name):lower()==wanted:lower() then return file end
+        end
+    end
+    local flags={}
+    local modsFile=fileNamed(mods,'mods.txt')
+    if modsFile and modsFile.__absolute_path then
+        local contents=read(modsFile.__absolute_path)
+        for line in ((contents or '')..'\n'):gmatch('([^\n]*)\n') do
+            local name,on=trim(line):match('^([^;#][^:]-)%s*:%s*([01])%s*[;#]?.*$')
+            if name then flags[trim(name):lower()]=on=='1' end
+        end
+    end
+    local function enabled(node,name)
+        return fileNamed(node,'enabled.txt')~=nil or flags[name:lower()]==true
+    end
+    local dmm=child(mods,'DawnwalkerModMenu')
+    result.dmmEligible=dmm~=nil and enabled(dmm,'DawnwalkerModMenu')
+        and fileNamed(child(dmm,'Scripts'),'main.lua')~=nil
+    if not result.dmmEligible then
+        log('DMM_DEPENDENCY_INACTIVE','no enabled direct Mods/DawnwalkerModMenu with Scripts/main.lua; no UI discovery installed')
+        return result
+    end
+
     local paths,seen={},{}; local stats={tables=0,fileTables=0,files=0,manifestNodes=0}
-    collectManifestPaths(mods,paths,seen,stats,12)
-    log('DISCOVERY_SCAN',string.format('Mods subtree: %d tables, %d file tables, %d files, %d manifest(s)',stats.tables,stats.fileTables,stats.files,#paths))
+    for name,node in pairs(mods) do
+        if name~='__files' and type(node)=='table' and enabled(node,tostring(node.__name or name)) then
+            collectManifestPaths(node,paths,seen,stats,0)
+        end
+    end
+    log('DISCOVERY_SCAN',string.format('Enabled direct Mods folders: %d tables, %d file tables, %d files, %d manifest(s)',stats.tables,stats.fileTables,stats.files,#paths))
     table.sort(paths)
 
     for _,path in ipairs(paths) do

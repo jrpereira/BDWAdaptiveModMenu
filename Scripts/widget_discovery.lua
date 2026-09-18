@@ -4,9 +4,16 @@ local function valid(o)
     local ok,result=pcall(function() return o:IsValid() end); return ok and result==true
 end
 M.valid=valid
+local knownClasses={'ScrollBox','SizeBox','HorizontalBox','Overlay','Button','TextBlock','Slider','WidgetTree'}
 local function className(o)
     if not valid(o) then return '' end
-    local ok,name=pcall(function() return o:GetClass():GetFName():ToString() end); return ok and name or ''
+    -- Never construct a UClass wrapper from a candidate's ClassPrivate pointer.
+    -- Call only on widgets freshly obtained from the current live menu tree.
+    for _,name in ipairs(knownClasses) do
+        local ok,match=pcall(function() return o:IsA('/Script/UMG.'..name) end)
+        if ok and match then return name end
+    end
+    return ''
 end
 M.className=className
 local function childAt(panel,index) local ok,v=pcall(function() return panel:GetChildAt(index) end); return ok and v or nil end
@@ -104,5 +111,42 @@ function M.rowsFromScroll(scroll)
         if row then rows[#rows+1]=row end
     end
     return rows
+end
+-- Enumerate current viewport hosts on the game thread. No construction callback
+-- wrapper is retained or dereferenced later. Each returned snapshot is local to
+-- this callback, including all descendant wrappers and their object names.
+function M.activeTrees()
+    local result={}
+    for _,host in ipairs(FindAllOf('CommonActivatableWidget') or {}) do
+        if valid(host) then
+            local name=host:GetFName():ToString()
+            if name:match('^CommonActivatableWidget_') and host:IsInViewport() and host:IsActivated() then
+                local tree=host.WidgetTree
+                if valid(tree) then
+                    local root=tree.RootWidget
+                    if valid(root) then
+                        local snapshot={widgets={},names={},scrolls={},count=0}
+                        local complete=true
+                        local function walk(widget,depth)
+                            if depth>40 or snapshot.count>=4096 then complete=false; return end
+                            if not valid(widget) then return end
+                            local addr=address(widget)
+                            if not addr or snapshot.widgets[addr] then return end
+                            snapshot.widgets[addr]=widget
+                            snapshot.names[addr]=widget:GetFName():ToString()
+                            snapshot.count=snapshot.count+1
+                            if widget:IsA('/Script/UMG.ScrollBox') then snapshot.scrolls[#snapshot.scrolls+1]=widget end
+                            if widget:IsA('/Script/UMG.PanelWidget') then
+                                for i=0,widget:GetChildrenCount()-1 do walk(widget:GetChildAt(i),depth+1) end
+                            end
+                        end
+                        walk(root,0)
+                        if complete then result[#result+1]=snapshot end
+                    end
+                end
+            end
+        end
+    end
+    return result
 end
 return M
