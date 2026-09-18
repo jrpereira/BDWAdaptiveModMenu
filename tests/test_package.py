@@ -30,7 +30,7 @@ class PackageTests(unittest.TestCase):
                 self.assertNotIn(pack.MODULE + '/Scripts/temporary_probe.lua', names)
                 self.assertEqual(len([n for n in names if '/Scripts/' in n]), 8)
                 self.assertFalse(any(n.endswith('/config.ini') or n.endswith('.dmp') or '/tests/' in n for n in names))
-                if pack.MODULE == 'ExtendedControls':
+                if pack.MODULE == 'QuickslotsForever':
                     self.assertEqual(bundle.read(pack.MODULE + '/config.example.ini'), (root / 'distribution/config.ini').read_bytes())
                 for name in names:
                     self.assertNotIn(b'PERSONAL_CONFIGURATION_MUST_NOT_SHIP', bundle.read(name))
