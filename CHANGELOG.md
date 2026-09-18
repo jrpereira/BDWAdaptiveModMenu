@@ -1,3 +1,9 @@
+# 0.1.35
+
+- Reject release manifests that would place a Tools directory anywhere in the ZIP, regardless of capitalization.
+- Cover nested, mixed-case and root-directory exclusions with packaging regression tests.
+- Runtime behavior is unchanged from 0.1.34.
+
 # 0.1.34
 
 - Preserve accepted row input state before rendering, so a failed label update followed by reopening cannot overwrite Restore with an old key.

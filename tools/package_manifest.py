@@ -41,6 +41,8 @@ def build(root, out=None, expected=None):
     payload = {}
     for dest, src in spec['files'].items():
         safe_file(root, dest)
+        if any(part.casefold() == 'tools' for part in (module + '/' + dest).split('/')[:-1]):
+            raise ValueError('Release archives must not contain a Tools directory')
         if Path(dest).name.lower() == 'config.ini':
             raise ValueError('Never package a personal config destination; use config.example.ini')
         payload[dest] = safe_file(root, src).read_bytes()
