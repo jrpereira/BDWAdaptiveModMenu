@@ -1,11 +1,13 @@
-local VERSION='0.1.13'
+local VERSION='0.1.31-rc.2'
 local Registrations=require('registrations')
 local Binding=require('dmm_binding')
-local function log(event,detail) print(string.format('[ModMenuDecorator] %s %s\n',event,detail or '')) end
-log('LOAD',VERSION)
+local function log(event,detail)
+    if event=='SELECTOR_DISABLED' or event=='DUPLICATE_PROVIDER_SKIPPED' or event:find('FAILED',1,true) or event:find('UNAVAILABLE',1,true) or event:find('EXCEPTION',1,true) then
+        print(string.format('[ModMenuDecorator] %s %s\n',event,detail or ''))
+    end
+end
 local registry=Registrations.discover(log)
-log('REGISTRY',string.format('%d keybind primary(s), %d paired mode(s), %d manifest(s)',#registry.decorations,registry.modes or 0,registry.manifests or 0))
 if #registry.decorations==0 then return end
 local ok,err=Binding.install(registry,log)
-if not ok then log('DMM_BINDING_UNAVAILABLE',tostring(err)); return end
-log('READY','manifest-order DMM page binding installed')
+if not ok then log('DMM_BINDING_UNAVAILABLE',tostring(err));return end
+print('[ModMenuDecorator] '..VERSION..' ready\n')

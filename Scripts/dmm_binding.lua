@@ -1,9 +1,11 @@
 local Discovery=require('widget_discovery')
 local KeySelector=require('key_selector')
+local MenuScope=require('menu_scope')
+local ClickDelivery=require('click_delivery')
 local M={}
 
 local function labelMatches(setting,row)
-    return type(setting.labels)=='table' and row.label and setting.labels[row.label]==true
+    return type(setting.labels)=='table' and row.label and setting.labels[row.label:gsub('%s+%*%s*$','')]==true
 end
 
 local function exactProviderMatch(provider,rows)
@@ -24,154 +26,200 @@ local function candidateProviders(registry,rows)
 end
 
 function M.install(registry,log)
-    if type(NotifyOnNewObject)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
-        return false,'NotifyOnNewObject/LoopAsync/ExecuteInGameThread unavailable'
+    if not registry.dmmEligible then return false,'DMM direct-folder dependency inactive' end
+    for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread'}) do
+        if type(_G[api])~='function' then return false,api..' unavailable' end
     end
-
-    -- Async timers only schedule work. All hierarchy access and widget mutation
-    -- runs on the game thread; at most one job per timer may be outstanding.
-    local function dispatch(fn)
-        if EGameThreadMethod and EGameThreadMethod.EngineTick then
-            ExecuteInGameThread(fn,EGameThreadMethod.EngineTick)
-        else ExecuteInGameThread(fn) end
-    end
-    local function loopGameThread(interval,fn)
-        local queued,done=false,false
-        LoopAsync(interval,function()
-            if done then return true end
-            if queued then return false end
-            queued=true
-            local ok,err=pcall(dispatch,function()
-                local success,finished=pcall(fn)
-                queued=false
-                if not success then
-                    done=true; log('GAME_THREAD_JOB_FAILED',tostring(finished))
-                elseif finished then done=true end
-            end)
-            if not ok then queued=false; done=true; log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
-            return done
-        end)
-    end
-
-    local pendingSliders={}      -- physical Slider address -> true while waiting for parent hierarchy
-    local pendingScrolls={}      -- physical ScrollBox address -> true while bounded discovery is active
-    local boundScrolls={}        -- physical ScrollBox address -> semantic page binding
-    local decoratedSliders={}   -- physical stock Slider address -> true
-    local instances={}          -- one global monitor list, no per-row LoopAsync callbacks
-
-    local function bindPage(scroll,rows,provider)
-        local scrollAddr=Discovery.address(scroll); if not scrollAddr or boundScrolls[scrollAddr] then return true end
-        local page={providerId=provider.id,scroll=scroll,rowsById={},ordered={},instances={}}
-
-        -- Capture semantic identity for every DMM row before any visual pairing/mutation.
-        for i,setting in ipairs(provider.choices) do
-            local row=rows[i]
-            local binding={providerId=provider.id,settingId=setting.id,sourceIndex=i,row=row,kind=row.kind}
-            page.rowsById[setting.id]=binding; page.ordered[i]=binding
-            log('ROW_BOUND',provider.id..'.'..setting.id..' index='..i..' kind='..row.kind)
-        end
-
-        boundScrolls[scrollAddr]=page
-        log('PAGE_MATCH',provider.id..' rows='..#rows)
-
-        for _,binding in ipairs(page.ordered) do
-            local descriptor=registry.byProvider[provider.id] and registry.byProvider[provider.id][binding.settingId]
-            if descriptor then
-                if binding.kind~='slider' or not Discovery.valid(binding.row.slider) then
-                    log('DECORATE_SKIPPED',provider.id..'.'..binding.settingId..': decorated keybind is not a numeric DMM row')
-                else
-                    local sliderAddr=Discovery.address(binding.row.slider)
-                    if sliderAddr and not decoratedSliders[sliderAddr] then
-                        local ok,instanceOrErr=pcall(KeySelector.decorate,binding.row,descriptor,log)
-                        if ok and instanceOrErr then
-                            decoratedSliders[sliderAddr]=true; binding.instance=instanceOrErr; page.instances[#page.instances+1]=instanceOrErr; instances[#instances+1]=instanceOrErr
-                            log('DECORATED_ONCE',provider.id..'.'..binding.settingId..' slider='..sliderAddr)
-                            if descriptor.modeId then
-                                local modeBinding=page.rowsById[descriptor.modeId]
-                                if modeBinding and modeBinding.kind=='picker' then
-                                    local callOk,pairOk,pairErr=pcall(KeySelector.mergePair,instanceOrErr,modeBinding.row,log)
-                                    if not callOk then
-                                        log('PAIR_EXCEPTION',provider.id..'.'..binding.settingId..': '..tostring(pairOk))
-                                    elseif not pairOk then
-                                        log('PAIR_FAILED',provider.id..'.'..binding.settingId..': '..tostring(pairErr))
-                                    end
-                                else
-                                    log('PAIR_FAILED',provider.id..'.'..binding.settingId..': mode binding unavailable')
-                                end
-                            end
-                        else log('DECORATE_FAILED',provider.id..'.'..binding.settingId..': '..tostring(instanceOrErr)) end
-                    else log('SKIP_ALREADY_DECORATED',provider.id..'.'..binding.settingId) end
+    local clicks=ClickDelivery.new(log)
+    local scope,schedule
+    local active=nil
+    local pending={}
+    local eventTicket=nil
+    local function ledger(instance)
+        local refs={}
+        local function add(target,keys)
+            for _,key in ipairs(keys) do
+                local object=target[key]
+                if object then
+                    local full=object:GetFullName()
+                    refs[#refs+1]={target=target,key=key,address=Discovery.address(object),name=object:GetFName():ToString(),full=full,path=assert(full:match('^%S+ (.+)$'))}
                 end
             end
         end
+        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget'})
+        add(instance.row,{'slider','wrapper','labelWidget','valueWidget'})
+        if instance.pair then add(instance.pair,{'button','inner','nav','valueWidget','text'}) end
+        for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
+        instance.liveRefs=refs
+    end
+    local function refresh(instance,allowed,routes,resolve)
+        local fresh={}
+        for i,ref in ipairs(instance.liveRefs) do
+            if not allowed() then return false end
+            local object=resolve(routes[ref.address])
+            if not object then return false,'unavailable control: '..tostring(ref.key) end
+            fresh[i]=object
+        end
+        if not allowed() then return false end
+        for i,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=fresh[i] end
         return true
     end
-
-    local function scheduleScroll(scroll)
-        if not Discovery.valid(scroll) then return end
-        local addr=Discovery.address(scroll); if not addr or pendingScrolls[addr] or boundScrolls[addr] then return end
-        pendingScrolls[addr]=true
-        local tries=0; local lastCount=-1; local stable=0
-        loopGameThread(16,function()
-            tries=tries+1
-            if not Discovery.valid(scroll) then pendingScrolls[addr]=nil; return true end
-            local rows=Discovery.rowsFromScroll(scroll) or {}
-            if #rows==lastCount then stable=stable+1 else lastCount=#rows; stable=0 end
-            local candidates=candidateProviders(registry,rows)
-            if #candidates==1 then
-                pendingScrolls[addr]=nil; bindPage(scroll,rows,candidates[1]); return true
+    local function bindPage(state,rows,provider)
+        local byId={}
+        for i,setting in ipairs(provider.choices) do byId[setting.id]=rows[i] end
+        for i,setting in ipairs(provider.choices) do
+            local descriptor=registry.byProvider[provider.id] and registry.byProvider[provider.id][setting.id]
+            local row=rows[i]
+            if descriptor and row.kind=='slider' then
+                local modeRow=descriptor.modeId and byId[descriptor.modeId]
+                local ok,instance,detail=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)
+                if ok and not instance then
+                    ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log)
+                    if ok and instance then state.constructed=true end
+                    if ok and instance and modeRow then
+                        local paired,result,err=pcall(KeySelector.mergePair,instance,modeRow,log,clicks)
+                        if not paired or not result then
+                            clicks:forget(instance)
+                            log('PAIR_FAILED',provider.id..'.'..setting.id..': '..tostring(paired and err or result))
+                        end
+                    end
+                end
+                if ok and instance then
+                    local recorded,recordError=pcall(ledger,instance)
+                    if recorded then
+                        instance.id=provider.id..'.'..setting.id
+                        instance.undo=nil;instance.pairUndo=nil -- rollback receipts are construction-only
+                        state.instances[#state.instances+1]=instance
+                    else
+                        clicks:forget(instance)
+                        -- Roll back only this just-constructed row, never an adopted
+                        -- decoration whose lifetime belongs to the existing page.
+                        if instance.undo then
+                            local restored,result=pcall(KeySelector.restore,instance,function() return true end)
+                            if not restored or not result then
+                                log('RESTORE_FAILED',provider.id..'.'..setting.id..': '..tostring(restored and 'rollback incomplete' or result))
+                            end
+                        end
+                        log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(recordError))
+                    end
+                else log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(ok and (detail or 'no decoration returned') or instance)) end
             end
-            -- Wait for populate() to finish. Reject only after the row count has settled.
-            if tries>=40 or (stable>=8 and tries>=12) then
-                pendingScrolls[addr]=nil
-                if #rows>0 then log('PAGE_REJECTED','scroll='..addr..' rows='..#rows..' candidates='..#candidates) end
-                return true
-            end
-            return false
-        end)
-    end
-
-    local function scheduleSlider(slider)
-        if not Discovery.valid(slider) then return end
-        local sliderAddr=Discovery.address(slider)
-        if not sliderAddr or pendingSliders[sliderAddr] or decoratedSliders[sliderAddr] then return end
-        pendingSliders[sliderAddr]=true
-        local tries=0
-        loopGameThread(16,function()
-            tries=tries+1
-            if not Discovery.valid(slider) then pendingSliders[sliderAddr]=nil; return true end
-            -- NotifyOnNewObject fires during UObject construction, before DMM has attached the
-            -- Slider to its row/ScrollBox. Resolve ancestry only after the hierarchy exists.
-            local scroll=Discovery.ancestorOfClass(slider,'ScrollBox',10)
-            if scroll then
-                pendingSliders[sliderAddr]=nil
-                scheduleScroll(scroll)
-                return true
-            end
-            if tries>=32 then pendingSliders[sliderAddr]=nil; return true end
-            return false
-        end)
-    end
-
-    NotifyOnNewObject('/Script/UMG.Slider',function(slider)
-        -- Global observation only; no mutation occurs unless the eventual ScrollBox exactly
-        -- matches a provider reconstructed from a real mod_settings.ini.
-        local ok,err=pcall(dispatch,function() scheduleSlider(slider) end)
-        if not ok then log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
-    end)
-
-    loopGameThread(40,function()
-        local keep={}
-        for _,instance in ipairs(instances) do
-            local ok,alive=pcall(KeySelector.tick,instance,log)
-            if ok and alive then keep[#keep+1]=instance
-            elseif not ok then log('SELECTOR_TICK_FAILED',tostring(alive)) end
         end
-        instances=keep
-        return false
-    end)
+    end
 
-    log('DMM_DISCOVERY_READY','deferred hierarchy + strict manifest-order page matching + non-reparenting paired proxy + protected merge enabled')
+    local function tick(path,epoch)
+        local function allowed() return scope:matches(path,epoch) end
+        if not allowed() then return end
+        if not scope:ownerLive() then return end
+        local host=StaticFindObject(path)
+        if not allowed() then return end
+        if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated()
+            or host:IsVisible()~=true or host:GetIsEnabled()~=true then
+            scope:invalidate('host inactive');return
+        end
+        local state=active
+        if not state then
+            state={instances={},routes={}}
+            active=state
+            -- One event-driven discovery, after DMM finishes its synchronous row build.
+            local snapshot=Discovery.activeTrees(host,allowed)[1]
+            if not allowed() then return end
+            if snapshot then
+                state.routes=snapshot.routes
+                for _,scroll in ipairs(snapshot.scrolls) do
+                    if not allowed() then return end
+                    local rows=Discovery.rowsFromScroll(scroll) or {}
+                    local candidates=candidateProviders(registry,rows)
+                    if #candidates==1 then bindPage(state,rows,candidates[1]) end
+                end
+                if state.constructed and #state.instances>0 and allowed() then
+                    local rebuilt=Discovery.activeTrees(host,allowed)[1]
+                    if rebuilt then state.routes=rebuilt.routes end
+                end
+            end
+            if #state.instances==0 then scope:dormant();return end
+        end
+        local instances=state.instances
+        local resolve=Discovery.routeResolver(host,allowed)
+        if not resolve then scope:invalidate('tree root unavailable');return end
+        local usable=0
+        for _,instance in ipairs(instances) do
+            if not allowed() then return end
+            if not instance.disabled then
+                local freshOK,fresh,refreshError=pcall(refresh,instance,allowed,state.routes,resolve)
+                local ok,alive=false,false
+                if freshOK and fresh and allowed() then ok,alive=pcall(KeySelector.tick,instance,log) end
+                if ok and alive then instance.failures=0
+                else
+                    instance.failures=(instance.failures or 0)+1
+                    if instance.failures==1 then
+                        local reason=not freshOK and fresh or (not fresh and refreshError) or (not ok and alive) or 'control unavailable'
+                        log('SELECTOR_TICK_FAILED',instance.id..': '..tostring(reason))
+                    end
+                    if instance.failures>=3 and allowed() then
+                        instance.disabled=true
+                        clicks:forget(instance)
+                        log('SELECTOR_DISABLED',instance.id..': updates stopped until next page event')
+                    end
+                end
+            end
+            if not instance.disabled then usable=usable+1 end
+        end
+        if usable==0 then scope:dormant();return end
+        if allowed() then schedule(path,epoch,100) end
+    end
+    local function fail(path,epoch,event,err)
+        pending[epoch]=nil
+        if scope:matches(path,epoch) then
+            log(event,tostring(err))
+            scope:invalidate(event)
+        end
+    end
+    schedule=function(path,epoch,delay)
+        if not scope or not scope:matches(path,epoch) or pending[epoch] then return end
+        pending[epoch]=true
+        local queued,queueError=pcall(ExecuteWithDelay,delay,function()
+            if not scope:matches(path,epoch) then pending[epoch]=nil;return end
+            local dispatched,dispatchError=pcall(function()
+                local function work()
+                    pending[epoch]=nil
+                    if not scope:matches(path,epoch) then return end
+                    if EngineTickAvailable==false then scope:invalidate('engine tick unavailable');return end
+                    local ok,err=pcall(tick,path,epoch)
+                    if not ok then fail(path,epoch,'DISCOVERY_FAILED',err) end
+                end
+                if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
+                else ExecuteInGameThread(work) end
+            end)
+            if not dispatched then fail(path,epoch,'GAME_THREAD_DISPATCH_FAILED',dispatchError) end
+        end)
+        if not queued then fail(path,epoch,'SCHEDULING_FAILED',queueError) end
+    end
+    local err
+    scope,err=MenuScope.install(log,function(path,epoch)
+        if not path then
+            eventTicket=nil;active=nil;clicks:retire(nil);clicks:close();return
+        end
+        -- Multiple DMM switcher calls in the same stack share one deferred refresh.
+        -- Each event has already revoked the previous epoch synchronously.
+        if eventTicket then eventTicket.path=path;eventTicket.epoch=epoch;return end
+        local ticket={path=path,epoch=epoch}
+        eventTicket=ticket
+        local queued,queueError=pcall(ExecuteWithDelay,0,function()
+            if eventTicket~=ticket then return end
+            eventTicket=nil
+            local currentPath,currentEpoch=ticket.path,ticket.epoch
+            if not scope:matches(currentPath,currentEpoch) then return end
+            active=nil;clicks:retire(nil)
+            local clickOK,clickError=clicks:open(currentPath)
+            if not clickOK then log('CLICK_HOOK_FAILED',tostring(clickError)) end
+            schedule(currentPath,currentEpoch,0)
+        end)
+        if not queued then eventTicket=nil;fail(path,epoch,'SCHEDULING_FAILED',queueError) end
+    end,function(path)
+        clicks:retire(path)
+    end)
+    if not scope then return false,err end
     return true
 end
 return M

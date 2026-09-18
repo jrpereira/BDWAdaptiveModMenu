@@ -26,7 +26,7 @@ local function keyNameFromChord(chord)
         local key=chord.Key
         local keyName=key and key.KeyName
         if keyName and keyName.ToString then return keyName:ToString() end
-        return tostring(keyName)
+        if type(keyName)=='string' and keyName~='' then return keyName end
     end)
     if ok and name and name~='' then return name end
 end
@@ -40,28 +40,61 @@ local function selectedName(selector)
 end
 
 local textLib=nil
-local function setText(widget,text,step)
-    -- TextBlock:SetText expects FText. Never probe it with a raw Lua string:
-    -- a native UE4SS access violation cannot reach a pcall fallback.
-    local function call(name,fn)
-        if step then return step(name,fn) end
-        return fn()
-    end
+local function setText(widget,text)
+    -- SetText requires FText; Lua pcall cannot contain a native access violation.
     local ok,result=pcall(function()
-        if not call('validate_text_target',function() return valid(widget) end) then return false end
-        if not valid(textLib) then
-            textLib=call('resolve_text_library',function()
-                return StaticFindObject('/Script/Engine.Default__KismetTextLibrary')
-            end)
-        end
-        if not call('validate_text_library',function() return valid(textLib) end) then return false end
-        local value=call('convert_string_to_ftext',function() return textLib:Conv_StringToText(text) end)
+        if not valid(widget) then return false end
+        if not valid(textLib) then textLib=StaticFindObject('/Script/Engine.Default__KismetTextLibrary') end
+        if not valid(textLib) then return false end
+        local value=textLib:Conv_StringToText(text)
         if value==nil then return false end
-        call('assign_ftext',function() widget:SetText(value) end)
+        widget:SetText(value)
         return true
     end)
     if not ok then return false,result end
     return result
+end
+
+-- The collapsed child is the row's persistent state. No Lua row registry owns it.
+local markerPrefix='MMD_ROW_1\n'
+local stateKeys={'initialized','lastName','lastBackingName','wasSelecting','captureName',
+    'keyHovered','labelDirty','readWarning','pairIndex','pairHovered','pairLastText'}
+local function encode(value)
+    if value==nil then return '-' end
+    if type(value)=='boolean' then return value and 't' or 'f' end
+    return 's'..tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
+end
+local function decode(value)
+    if value=='-' then return nil end
+    if value=='t' then return true end
+    if value=='f' then return false end
+    assert(value:sub(1,1)=='s','invalid row state')
+    return (value:sub(2):gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end))
+end
+function M.save(instance)
+    if not instance.stateWidget then return end -- Standalone control test adapters.
+    if instance.pair then
+        instance.pairHovered=instance.pair.hovered
+        instance.pairLastText=instance.pair.lastText
+    end
+    local saved=instance.savedState
+    local changed=not saved
+    if saved then
+        for _,key in ipairs(stateKeys) do
+            if saved[key]~=instance[key] then changed=true;break end
+        end
+    end
+    if not changed then return end
+    local fields={}
+    for i,key in ipairs(stateKeys) do fields[i]=encode(instance[key]) end
+    local text=markerPrefix..table.concat(fields,'\n')..'\n'
+    if text~=instance.stateText then
+        assert(setText(instance.stateWidget,text),'row state write failed')
+        instance.stateText=text
+    end
+    saved=saved or {}
+    for _,key in ipairs(stateKeys) do saved[key]=instance[key] end
+    instance.savedState=saved
 end
 
 local function dirtyText(widget)
@@ -80,7 +113,11 @@ end
 
 local function styleNormal(instance)
     for _,edge in ipairs(instance.keyEdges or {}) do pcall(function() edge:SetBrushColor({R=0.55,G=0.52,B=0.46,A=0.85}) end) end
-    if valid(instance.keyInner) then pcall(function() instance.keyInner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.30}) end) end
+    if valid(instance.keyInner) then
+        instance.keyInner:SetBrushColor(instance.keyHovered
+            and {R=0.95,G=0.63,B=0.08,A=0.22}
+            or {R=0.12,G=0.12,B=0.12,A=0.30})
+    end
 end
 
 local function styleSelecting(instance)
@@ -91,19 +128,10 @@ end
 function M.decorate(row,descriptor,log)
     if not row or not valid(row.slider) then return nil,'invalid numeric row' end
     local tree=row.tree
-    log('DECORATE_PREFLIGHT',descriptor.providerId..'.'..descriptor.settingId)
 
     -- Keep the stock Slider UObject as DMM's authoritative numeric control, but make its
     -- visuals invisible. The decorator adds a styled capture surface above it.
-    pcall(function() row.slider:SetRenderOpacity(0) end)
-    pcall(function() row.valueWidget:SetRenderOpacity(0) end)
-
-    local existing=Discovery.childCount(row.surface)
-    for i=0,existing-1 do
-        local child=Discovery.childAt(row.surface,i)
-        if valid(child) and Discovery.address(child)~=Discovery.address(row.slider) then pcall(function() child:SetRenderOpacity(0) end) end
-    end
-
+    local existing=Discovery.childCount(row.surface) -- stock children only, before attaching replacement
     local keyBox=construct('/Script/UMG.SizeBox',tree)
     keyBox:SetWidthOverride(96); keyBox:SetHeightOverride(32)
     local keyOverlay=construct('/Script/UMG.Overlay',tree)
@@ -146,7 +174,6 @@ function M.decorate(row,descriptor,log)
     textSlot:SetPadding({Left=4,Top=0,Right=4,Bottom=0})
 
     local selector=construct('/Script/UMG.InputKeySelector',tree)
-    log('SELECTOR_CREATED',descriptor.providerId..'.'..descriptor.settingId)
     selector:SetAllowGamepadKeys(false); selector:SetAllowModifierKeys(false)
     selector:SetEscapeKeys({{KeyName=FName('Escape')}})
     selector:SetRenderOpacity(0.0)
@@ -155,7 +182,14 @@ function M.decorate(row,descriptor,log)
 
     local hostSlot=need(row.surface:AddChildToOverlay(keyBox),'key host slot')
     hostSlot:SetHorizontalAlignment(1); hostSlot:SetVerticalAlignment(2)
-    log('SELECTOR_ATTACHED',descriptor.providerId..'.'..descriptor.settingId)
+
+    pcall(function() row.slider:SetRenderOpacity(0) end)
+    pcall(function() row.valueWidget:SetRenderOpacity(0) end)
+
+    for i=0,existing-1 do
+        local child=Discovery.childAt(row.surface,i)
+        if valid(child) and Discovery.address(child)~=Discovery.address(row.slider) then pcall(function() child:SetRenderOpacity(0) end) end
+    end
 
     -- Reserve the stock three-column row for: label | key | optional pair.
     if descriptor.modeId then
@@ -164,14 +198,19 @@ function M.decorate(row,descriptor,log)
         row.labelBox:SetWidthOverride(488); row.surfaceBox:SetWidthOverride(96); row.valueBox:SetWidthOverride(0)
     end
 
-    return {
-        descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
+    local stateWidget=construct('/Script/UMG.TextBlock',tree)
+    stateWidget:SetVisibility(1)
+    need(keyOverlay:AddChildToOverlay(stateWidget),'row state slot')
+    local instance={
+        stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
-        awaitingDmm=false,awaitingTicks=0,targetValue=nil,targetNormalized=nil,pair=nil,labelDirty=nil,
+        pair=nil,labelDirty=nil,
     }
+    M.save(instance)
+    return instance
 end
 
-function M.mergePair(instance,modeRow,log)
+function M.mergePair(instance,modeRow,log,clicks)
     if not instance or not modeRow or modeRow.kind~='picker' then return false,'mode row is not a picker' end
     if not valid(modeRow.wrapper) or not valid(modeRow.nav) or not valid(modeRow.valueWidget) or not valid(instance.row.surface) then return false,'pair widgets unavailable' end
     local tree=instance.row.tree
@@ -180,17 +219,13 @@ function M.mergePair(instance,modeRow,log)
     -- Keep the stock picker row and every stock child UObject in place. Build the visible
     -- proxy from widgets whose composition paths are already proven elsewhere in MMD:
     -- SizeBox -> Overlay -> Border -> TextBlock, plus a transparent sibling Button used
-    -- only as a hit target. In particular, never call Button:SetContent(); v0.1.9 showed
-    -- a native UE4SS failure immediately after constructing the TextBlock on that path.
-    log('PAIR_PROXY_STEP',id..' construct_box')
+    -- only as a hit target. Keep text in the sibling border composition.
     local pairBox=construct('/Script/UMG.SizeBox',tree)
     pairBox:SetWidthOverride(150); pairBox:SetHeightOverride(32)
 
-    log('PAIR_PROXY_STEP',id..' construct_overlay')
     local pairOverlay=construct('/Script/UMG.Overlay',tree)
     need(pairBox:SetContent(pairOverlay),'pair box content')
 
-    log('PAIR_PROXY_STEP',id..' construct_frame')
     local pairFrame=construct('/Script/UMG.Border',tree)
     pairFrame:SetBrushColor({R=0,G=0,B=0,A=0})
     pairFrame:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
@@ -202,45 +237,20 @@ function M.mergePair(instance,modeRow,log)
     local innerSlot=need(pairFrame:SetContent(pairInner),'pair inner content')
     innerSlot:SetHorizontalAlignment(0); innerSlot:SetVerticalAlignment(0)
 
-    -- Each BEGIN is emitted before crossing into UE4SS; END proves that call returned.
-    -- pcall reports Lua errors only. It cannot contain a native access violation.
-    local function textStep(name,fn)
-        log('PAIR_TEXT_BEGIN',id..' '..name)
-        local ok,result=pcall(fn)
-        if not ok then
-            log('PAIR_TEXT_LUA_ERROR',id..' '..name..' '..tostring(result))
-            error(result,0)
-        end
-        log('PAIR_TEXT_END',id..' '..name)
-        return result
-    end
-    log('PAIR_PROXY_STEP',id..' construct_text')
-    local textClass=textStep('resolve_class',function() return class('/Script/UMG.TextBlock') end)
-    local pairText=textStep('construct_object',function() return StaticConstructObject(textClass,tree) end)
-    textStep('validate_object',function() return need(pairText,'pair TextBlock construction') end)
-    textStep('set_justification',function() pairText:SetJustification(1) end)
-    textStep('set_overflow',function() pairText:SetTextOverflowPolicy(1) end)
+    local pairText=construct('/Script/UMG.TextBlock',tree)
+    pairText:SetJustification(1); pairText:SetTextOverflowPolicy(1)
+    pcall(function() pairText:SetFont(modeRow.valueWidget.Font) end)
     pcall(function()
-        local font=textStep('read_mode_font',function() return modeRow.valueWidget.Font end)
-        textStep('set_font',function() pairText:SetFont(font) end)
+        pairText:SetRenderTransformPivot({X=0.5,Y=0.5})
+        pairText:SetRenderScale({X=0.88,Y=0.88})
     end)
-    pcall(function()
-        textStep('set_pivot',function() pairText:SetRenderTransformPivot({X=0.5,Y=0.5}) end)
-        textStep('set_scale',function() pairText:SetRenderScale({X=0.88,Y=0.88}) end)
-    end)
-    local initial=stripDirtySuffix(textStep('read_mode_text',function() return Discovery.textOf(modeRow.valueWidget) end) or '')
-    local textSet=textStep('set_initial_text',function()
-        local ok,err=setText(pairText,initial,textStep)
-        if not ok then error('pair initial text unavailable: '..tostring(err or 'invalid widget, library, or FText'),0) end
-        return true
-    end)
-    local rawSlot=textStep('attach_text',function() return pairInner:SetContent(pairText) end)
-    local ts=textStep('validate_slot',function() return need(rawSlot,'pair text content') end)
-    textStep('slot_horizontal',function() ts:SetHorizontalAlignment(0) end)
-    textStep('slot_vertical',function() ts:SetVerticalAlignment(2) end)
-    textStep('slot_padding',function() ts:SetPadding({Left=4,Top=0,Right=4,Bottom=0}) end)
+    local initial=stripDirtySuffix(Discovery.textOf(modeRow.valueWidget) or '')
+    local textSet,textError=setText(pairText,initial)
+    if not textSet then error('pair initial text unavailable: '..tostring(textError or 'invalid widget, library, or FText'),0) end
+    local ts=need(pairInner:SetContent(pairText),'pair text content')
+    ts:SetHorizontalAlignment(0); ts:SetVerticalAlignment(2)
+    ts:SetPadding({Left=4,Top=0,Right=4,Bottom=0})
 
-    log('PAIR_PROXY_STEP',id..' construct_hit_target')
     local pairButton=construct('/Script/UMG.Button',tree)
     pairButton.IsFocusable=false
     pcall(function() pairButton:SetBackgroundColor({R=0,G=0,B=0,A=0}) end)
@@ -248,18 +258,17 @@ function M.mergePair(instance,modeRow,log)
     local bs=need(pairOverlay:AddChildToOverlay(pairButton),'pair hit target slot')
     bs:SetHorizontalAlignment(0); bs:SetVerticalAlignment(0)
 
-    log('PAIR_PROXY_STEP',id..' attach_primary')
     -- Primary row becomes label | key+pair. The stock value box stays alive at width zero.
     instance.row.surfaceBox:SetWidthOverride(254)
     instance.row.valueBox:SetWidthOverride(0)
+    local pairIndex=Discovery.childCount(instance.row.surface)
     local slot=need(instance.row.surface:AddChildToOverlay(pairBox),'pair proxy overlay slot')
     slot:SetHorizontalAlignment(3); slot:SetVerticalAlignment(2)
 
     -- Measure every supported label after attaching the Slate widget. If desired
-    -- size is unavailable, estimate from the same font and report the fallback.
+    -- size is unavailable, estimate from the same font.
     local labels=instance.descriptor.modeOptions or {initial}
     local maxWidth=0
-    local measured=true
     for _,label in ipairs(labels) do
         setText(pairText,label)
         local ok,width=pcall(function()
@@ -267,7 +276,6 @@ function M.mergePair(instance,modeRow,log)
             return tonumber(pairText:GetDesiredSize().X)
         end)
         if not ok or not width or width<=0 then
-            measured=false
             local fontSize=18
             pcall(function() fontSize=tonumber(modeRow.valueWidget.Font.Size) or fontSize end)
             width=(utf8.len(label) or #label)*fontSize*0.7
@@ -278,16 +286,59 @@ function M.mergePair(instance,modeRow,log)
     local pairWidth=math.max(36,math.ceil(maxWidth+16))
     pairBox:SetWidthOverride(pairWidth)
     instance.row.surfaceBox:SetWidthOverride(96+8+pairWidth)
-    log('PAIR_WIDTH',id..' width='..pairWidth..' measured='..tostring(measured))
 
     instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
-        button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,pressed=false,lastText=initial,count=math.max(1,#labels)}
-    log('PAIR_PROXY_READY',id..' + '..instance.descriptor.modeId)
+        button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,lastText=initial,count=math.max(1,#labels)}
+
+    assert(clicks,'click delivery unavailable'):attach(instance,pairButton)
 
     -- Collapse only the source wrapper after the proxy exists. No child is removed/reparented.
     local okCollapse,collapseErr=pcall(function() modeRow.wrapper:SetVisibility(1) end)
-    if not okCollapse then log('PAIR_COLLAPSE_FAILED',id..': '..tostring(collapseErr)) end
+    if not okCollapse then error('pair collapse failed: '..tostring(collapseErr),0) end
+    instance.pairIndex=pairIndex
+    M.save(instance)
     return true
+end
+
+-- Called only after page readiness. Existing children are the authority for
+-- decoration presence; runtime bindings can be discarded at every scope change.
+function M.adopt(row,descriptor,modeRow,clicks)
+    for i=0,Discovery.childCount(row.surface)-1 do
+        local box=Discovery.childAt(row.surface,i)
+        local overlay=Discovery.contentOf(box)
+        local marker=overlay and Discovery.childAt(overlay,6)
+        local text=marker and Discovery.textOf(marker)
+        if text and text:sub(1,#markerPrefix)==markerPrefix then
+            local frame=Discovery.childAt(overlay,0)
+            local inner=Discovery.contentOf(frame)
+            local instance={descriptor=descriptor,row=row,keyBox=box,keyFrame=frame,
+                keyInner=inner,keyText=Discovery.contentOf(inner),selector=Discovery.childAt(overlay,5),
+                stateWidget=marker,stateText=text,keyEdges={},baseLabel=stripDirtySuffix(row.label)}
+            local n=0
+            for field in text:sub(#markerPrefix+1):gmatch('(.-)\n') do
+                n=n+1
+                if stateKeys[n] then instance[stateKeys[n]]=decode(field) end
+            end
+            assert(n==#stateKeys,'incompatible row state')
+            instance.savedState={}
+            for _,key in ipairs(stateKeys) do instance.savedState[key]=instance[key] end
+            for edge=1,4 do instance.keyEdges[edge]=Discovery.contentOf(Discovery.childAt(overlay,edge)) end
+            if instance.pairIndex then
+                assert(modeRow,'paired row unavailable')
+                local pairBox=Discovery.childAt(row.surface,assert(tonumber(instance.pairIndex)))
+                local pairOverlay=Discovery.contentOf(pairBox)
+                local pairFrame=Discovery.childAt(pairOverlay,0)
+                local pairInner=Discovery.contentOf(pairFrame)
+                instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
+                    button=Discovery.childAt(pairOverlay,1),text=Discovery.contentOf(pairInner),
+                    valueWidget=modeRow.valueWidget,nav=modeRow.nav,
+                    count=math.max(1,#(descriptor.modeOptions or {})),
+                    hovered=instance.pairHovered,lastText=instance.pairLastText}
+                clicks:attach(instance,instance.pair.button,true)
+            end
+            return instance
+        end
+    end
 end
 
 local function updateDirtyPresentation(instance)
@@ -305,7 +356,6 @@ local function updateDirtyPresentation(instance)
         setText(instance.row.labelWidget,instance.baseLabel..(dirty and ' *' or ''))
         instance.labelDirty=dirty
     end
-    return keyDirty,modeDirty
 end
 
 local function syncSelector(instance,name)
@@ -316,7 +366,7 @@ local function syncSelector(instance,name)
     instance.lastBackingName=name
 end
 
-local function submit(instance,name,keyValue,log)
+local function submit(instance,name,keyValue)
     local d=instance.descriptor
     local normalized=(keyValue-d.minimum)/(d.maximum-d.minimum)
     local previous=instance.row.slider:GetValue()
@@ -328,9 +378,6 @@ local function submit(instance,name,keyValue,log)
     -- remains responsible for pending/dirty/Apply. Never write its config.
     instance.row.slider:SetValue(normalized)
     syncSelector(instance,name)
-    instance.awaitingDmm=true; instance.awaitingTicks=0
-    instance.targetValue=keyValue; instance.targetNormalized=normalized
-    log('KEY_SELECTED',d.providerId..'.'..d.settingId..'='..keyValue..' ('..name..')')
 end
 
 function M.tick(instance,log)
@@ -338,6 +385,27 @@ function M.tick(instance,log)
     if not valid(instance.row.wrapper) then return false end
     local okParent,parent=pcall(function() return instance.row.wrapper:GetParent() end)
     if not okParent or not valid(parent) then return false end
+
+    -- Pointer feedback belongs to the key hit target, not the whole stock row.
+    -- Capture styling wins until capture ends, even if the pointer moves away.
+    local keyHovered=instance.selector:IsHovered()==true
+    if keyHovered~=instance.keyHovered then
+        instance.keyHovered=keyHovered
+        if not instance.wasSelecting then styleNormal(instance) end
+    end
+
+    -- Highlight only the paired picker's surface when its hit target is hovered.
+    -- Keep the stock row highlight and key-capture styling independently owned.
+    local pair=instance.pair
+    if pair and valid(pair.button) and valid(pair.inner) then
+        local hovered=pair.button:IsHovered()==true
+        if hovered~=pair.hovered then
+            pair.inner:SetBrushColor(hovered
+                and {R=0.95,G=0.63,B=0.08,A=0.22}
+                or {R=0.12,G=0.12,B=0.12,A=0.10})
+            pair.hovered=hovered
+        end
+    end
 
     local d=instance.descriptor
     local id=d.providerId..'.'..d.settingId
@@ -357,7 +425,6 @@ function M.tick(instance,log)
             setText(instance.keyText,tostring(backingValue))
         end
         instance.initialized=true
-        log('KEY_INITIALIZED',id..'='..backingValue)
         updateDirtyPresentation(instance)
         return true
     end
@@ -368,7 +435,6 @@ function M.tick(instance,log)
             instance.wasSelecting=true
             instance.captureName=instance.lastName
             setText(instance.keyText,'...'); styleSelecting(instance)
-            log('CAPTURE_BEGIN',id..' previous='..tostring(instance.captureName))
         end
         updateDirtyPresentation(instance)
         return true
@@ -382,36 +448,15 @@ function M.tick(instance,log)
             -- pending acknowledgement or dirty state is changed by cancellation.
             syncSelector(instance,instance.captureName)
             instance.captureName=nil
-            log('CAPTURE_CANCEL_OR_UNCHANGED',id)
             updateDirtyPresentation(instance)
             return true
         end
-        log('CAPTURE_END',id..' selected='..name)
         instance.captureName=nil
     elseif name=='Escape' then
         -- Defensive path if native cancellation was missed between monitor ticks.
         syncSelector(instance,instance.lastName)
-        log('CAPTURE_CANCEL',id)
         updateDirtyPresentation(instance)
         return true
-    end
-
-    if instance.awaitingDmm then
-        instance.awaitingTicks=instance.awaitingTicks+1
-        local text=stripDirtySuffix(Discovery.textOf(instance.row.valueWidget) or '')
-        local observed=tonumber(text)
-        if backingValue~=instance.targetValue then
-            -- Restore/Reset/other stock action superseded the request. Never
-            -- reassert a stale captured value over a subsequent DMM operation.
-            instance.awaitingDmm=false
-            log('DMM_WRITE_SUPERSEDED',id..' backing='..backingValue)
-        elseif observed==instance.targetValue then
-            instance.awaitingDmm=false
-            log('DMM_VALUE_ACK',id..'='..backingValue)
-        elseif instance.awaitingTicks>=25 then
-            instance.awaitingDmm=false
-            log('DMM_DIRTY_WAIT',id..' target='..tostring(instance.targetValue)..' stockText='..text)
-        end
     end
 
     if name~=instance.lastName then
@@ -420,27 +465,137 @@ function M.tick(instance,log)
             log('UNSUPPORTED_KEY',id..' '..name)
             syncSelector(instance,backingName or instance.lastName)
         else
-            submit(instance,name,keyValue,log)
+            submit(instance,name,keyValue)
         end
-    elseif backingName~=instance.lastBackingName and not instance.awaitingDmm then
+    elseif backingName~=instance.lastBackingName then
         syncSelector(instance,backingName)
     end
 
-    if instance.pair and valid(instance.pair.button) and valid(instance.pair.nav) then
-        local pressed=instance.pair.button:IsPressed()==true
-        if pressed then instance.pair.pressed=true
-        elseif instance.pair.pressed then
-            instance.pair.pressed=false
-            if instance.pair.button:IsHovered()==true then
-                local current=tonumber(instance.pair.nav:GetValue()) or 0
-                local target=(math.floor(current+0.5)+1)%instance.pair.count
-                instance.pair.nav:SetValue(target)
-                log('PAIR_SELECTED',id..' modeIndex='..target)
-            end
+    if instance.pair and valid(instance.pair.nav) then
+        local count=instance.pendingClicks or 0
+        if count>0 then
+            local current=tonumber(instance.pair.nav:GetValue()) or 0
+            instance.pair.nav:SetValue((math.floor(current+0.5)+count)%instance.pair.count)
+            instance.pendingClicks=0
         end
     end
     updateDirtyPresentation(instance)
     return true
 end
 
+local tick=M.tick
+function M.tick(instance,log)
+    local result=tick(instance,log)
+    M.save(instance)
+    return result
+end
+
+local function identity(widget)
+    local full=widget:GetFullName()
+    return {path=assert(full:match('^%S+ (.+)$')),full=full,address=Discovery.address(widget)}
+end
+local function resolve(ref)
+    local widget=StaticFindObject(ref.path)
+    if valid(widget) and Discovery.address(widget)==ref.address and widget:GetFullName()==ref.full then return widget end
+end
+local function undo(receipt,allowed)
+    if not receipt then return true end
+    local complete=true
+    for i=#receipt.roots,1,-1 do
+        if not allowed() then return false end
+        local ok=pcall(function()
+            local widget=resolve(receipt.roots[i])
+            if widget then widget:RemoveFromParent() end
+        end)
+        if not ok then complete=false end
+    end
+    for _,entry in ipairs(receipt.saved) do
+        if not allowed() then return false end
+        local ok=pcall(function()
+            local widget=resolve(entry.ref)
+            if widget then
+                if entry.clear then widget[entry.clear](widget)
+                else widget[entry.set](widget,entry.value) end
+            end
+        end)
+        if not ok then complete=false end
+    end
+    return complete
+end
+local function transactional(fn,rowOf,isPair)
+    return function(...)
+        local args={...}
+        local row=rowOf(args)
+        local receipt={saved={},roots={}}
+        local priorState,priorText
+        if isPair then
+            priorState={}
+            for _,key in ipairs(stateKeys) do priorState[key]=args[1][key] end
+            priorText=args[1].stateText
+        end
+        local function save(widget,get,set)
+            if not valid(widget) then return end
+            receipt.saved[#receipt.saved+1]={ref=identity(widget),set=set,value=widget[get](widget)}
+        end
+        save(row.slider,'GetRenderOpacity','SetRenderOpacity')
+        save(row.valueWidget,'GetRenderOpacity','SetRenderOpacity')
+        for _,key in ipairs({'labelBox','surfaceBox','valueBox'}) do
+            local widget=row[key]
+            if valid(widget) then
+                local override=widget.bOverride_WidthOverride
+                receipt.saved[#receipt.saved+1]={ref=identity(widget),set='SetWidthOverride',value=widget.WidthOverride,
+                    clear=(override==false or override==0) and 'ClearWidthOverride' or nil}
+            end
+        end
+        if isPair then save(args[2].wrapper,'GetVisibility','SetVisibility') end
+        local count=Discovery.childCount(row.surface)
+        for i=0,count-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
+        local ok,result,err=pcall(fn,table.unpack(args))
+        local recorded,recordError=pcall(function()
+            for i=count,Discovery.childCount(row.surface)-1 do
+                receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
+            end
+        end)
+        if ok and result and recorded then
+            if isPair then args[1].pairUndo=receipt else result.undo=receipt end
+            return result,err
+        end
+        -- Still inside this synchronous construction transaction: remove attached
+        -- roots directly even if recording their primitive identities failed.
+        local removed=true
+        for i=Discovery.childCount(row.surface)-1,count,-1 do
+            local clean=pcall(function() Discovery.childAt(row.surface,i):RemoveFromParent() end)
+            if not clean then removed=false end
+        end
+        receipt.roots={}
+        local restored=undo(receipt,function() return true end)
+        if isPair then
+            local instance=args[1]
+            instance.pair=nil
+            for _,key in ipairs(stateKeys) do instance[key]=priorState[key] end
+            if instance.stateWidget and priorText then
+                if not setText(instance.stateWidget,priorText) then restored=false end
+            end
+            instance.stateText=priorText;instance.savedState=priorState
+        end
+        local reason=not recorded and recordError or (ok and err or result)
+        if not removed or not restored then reason=tostring(reason)..'; rollback incomplete' end
+        return nil,reason
+    end
+end
+M.decorate=transactional(M.decorate,function(args) return args[1] end,false)
+M.mergePair=transactional(M.mergePair,function(args) return args[1].row end,true)
+function M.restore(instance,allowed)
+    local pairOK=undo(instance.pairUndo,allowed)
+    local keyOK=undo(instance.undo,allowed)
+    if allowed() then
+        for _,ref in ipairs(instance.liveRefs or {}) do
+            if ref.key=='labelWidget' then
+                local label=resolve(ref)
+                if label then setText(label,instance.baseLabel) end
+            end
+        end
+    end
+    return pairOK and keyOK
+end
 return M

@@ -18,6 +18,7 @@ class PackageTests(unittest.TestCase):
             shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns('.git', 'dist', '__pycache__'))
             (root / 'config.ini').write_text('PERSONAL_CONFIGURATION_MUST_NOT_SHIP')
             (root / 'crash.dmp').write_bytes(b'PRIVATE_DUMP')
+            (root / 'Scripts/temporary_probe.lua').write_text('TEMPORARY_PROBE')
             archive = pack.build(root)
             before = archive.read_bytes()
             self.assertEqual(before, pack.build(root).read_bytes())
@@ -26,8 +27,10 @@ class PackageTests(unittest.TestCase):
                 names = bundle.namelist()
                 self.assertIn(pack.MODULE + '/Scripts/main.lua', names)
                 self.assertIn(pack.MODULE + '/enabled.txt', names)
+                self.assertNotIn(pack.MODULE + '/Scripts/temporary_probe.lua', names)
+                self.assertEqual(len([n for n in names if '/Scripts/' in n]), 8)
                 self.assertFalse(any(n.endswith('/config.ini') or n.endswith('.dmp') or '/tests/' in n for n in names))
-                if pack.MODULE == 'ExtendedControls':
+                if pack.MODULE == 'QuickslotsForever':
                     self.assertEqual(bundle.read(pack.MODULE + '/config.example.ini'), (root / 'distribution/config.ini').read_bytes())
                 for name in names:
                     self.assertNotIn(b'PERSONAL_CONFIGURATION_MUST_NOT_SHIP', bundle.read(name))
@@ -36,11 +39,20 @@ class PackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pack.build(expected='999.0.0')
 
+    def test_release_candidate_version(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'Scripts').mkdir()
+            (root / 'Scripts/main.lua').write_text("local VERSION='0.1.31-rc.1'")
+            shutil.copy2(ROOT / 'release-manifest.json', root / 'release-manifest.json')
+            self.assertEqual(pack.version(root), '0.1.31-rc.1')
+
     def test_invalid_source_version_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / 'Scripts').mkdir()
             (root / 'Scripts/main.lua').write_text('local VERSION="invalid"')
+            shutil.copy2(ROOT / 'release-manifest.json', root / 'release-manifest.json')
             with self.assertRaises(ValueError):
                 pack.version(root)
 
