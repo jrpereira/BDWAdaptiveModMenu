@@ -7,7 +7,7 @@ import time
 import uuid
 
 PATTERNS = {
-    'ExtendedControls': re.compile(r'\[ExtendedControls\] Loaded v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)(?=\. |\s|$)'),
+    'QuickslotsForever': re.compile(r'\[QuickslotsForever\] Loaded v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)(?=\. |\s|$)'),
     'ModMenuDecorator': re.compile(r'\[ModMenuDecorator\] (\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?) ready'),
 }
 STAMP = re.compile(r'^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d+))?\]')

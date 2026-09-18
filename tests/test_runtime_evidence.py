@@ -42,17 +42,17 @@ class RuntimeEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp)/'UE4SS.log'
             log.write_text('[2026-09-18 10:00:01.1234567] Console created\n'
-                           '[2026-09-18 10:00:12.1234567] [Lua] [ExtendedControls] Loaded v0.3.53. Auto-initialization deferred\n'
+                           '[2026-09-18 10:00:12.1234567] [Lua] [QuickslotsForever] Loaded v0.3.53. Auto-initialization deferred\n'
                            '[2026-09-18 10:00:13.1] [Lua] [ModMenuDecorator] 0.1.31-rc.1 ready\n')
             session = {'pid':123,'started_at':'2026-09-18T10:00:00+00:00'}
             now = datetime(2026,9,18,11,tzinfo=timezone.utc)
-            ec = from_log(log,'ExtendedControls',session,timezone.utc,now)
+            ec = from_log(log,'QuickslotsForever',session,timezone.utc,now)
             self.assertEqual(ec['version'], '0.3.53')
             self.assertIsNone(ec['loaded_file_hashes'])
             self.assertEqual(from_log(log,'ModMenuDecorator',session,timezone.utc,now)['version'],'0.1.31-rc.1')
             self.assertIsNone(from_log(log,'UE4SSLuaEventBridge',session,timezone.utc,now))
             for start in ['2026-09-17T10:00:00Z','2026-09-18T10:01:00Z']:
-                self.assertIsNone(from_log(log,'ExtendedControls',{'pid':123,'started_at':start},timezone.utc,now))
+                self.assertIsNone(from_log(log,'QuickslotsForever',{'pid':123,'started_at':start},timezone.utc,now))
 
 
 if __name__ == '__main__':
