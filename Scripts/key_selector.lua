@@ -98,6 +98,7 @@ function M.decorate(row,descriptor,log)
 
     -- Keep the stock Slider UObject as DMM's authoritative numeric control, but make its
     -- visuals invisible. The decorator adds a styled capture surface above it.
+    local existing=Discovery.childCount(row.surface) -- stock children only, before attaching replacement
     local keyBox=construct('/Script/UMG.SizeBox',tree)
     keyBox:SetWidthOverride(96); keyBox:SetHeightOverride(32)
     local keyOverlay=construct('/Script/UMG.Overlay',tree)
@@ -152,7 +153,6 @@ function M.decorate(row,descriptor,log)
     pcall(function() row.slider:SetRenderOpacity(0) end)
     pcall(function() row.valueWidget:SetRenderOpacity(0) end)
 
-    local existing=Discovery.childCount(row.surface)
     for i=0,existing-1 do
         local child=Discovery.childAt(row.surface,i)
         if valid(child) and Discovery.address(child)~=Discovery.address(row.slider) then pcall(function() child:SetRenderOpacity(0) end) end
