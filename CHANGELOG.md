@@ -1,3 +1,7 @@
+# 0.1.31
+
+Promote the rc.2 runtime fixes to stable. Runtime behavior is unchanged apart from the version label. Keep diagnostic inspection tooling and evidence outside public source and history. Automated regression and packaging checks pass; native gameplay-impact verification remains pending.
+
 # 0.1.31-rc.2
 
 Fix audited construction failure paths: restore stock controls if initial binding bookkeeping fails; contain post-attachment receipt errors inside the transaction; restore row-owned picker metadata on rollback; and report incomplete rollback explicitly. Automated fault-injection regressions cover each case and ensure adoption failure does not dismantle existing rows. No polling, dependency or configuration changes. Native integration validation remains separate.

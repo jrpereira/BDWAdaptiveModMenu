@@ -2,7 +2,7 @@
 
 Runtime settings decoration for The Blood of Dawnwalker mods, integrating with
 Dawnwalker Mod Menu without modifying or redistributing its source.
-Current source: **0.1.31-rc.2**. See [candidate notes](CHANGELOG.md).
+Current source: **0.1.31**. See [release notes](CHANGELOG.md).
 
 ## For mod developers
 
@@ -24,7 +24,7 @@ Basic key capture/cancellation and short picker clicks passed earlier native che
 The user reports the v0.1.27 functional checklist passes: menu entry, Back/page switching,
 close/reopen/loading, key/Mode edits, cancellation, Reset/Restore and Apply.
 Subsequent repeated menu/load cycles exposed missing decorations in v0.1.28.
-The v0.1.31-rc.2 improvements have automated coverage; native gameplay comparison is pending.
+The v0.1.31 improvements have automated coverage; native gameplay comparison is pending.
 No permanent discovery timer runs during gameplay; menu controls retain scoped polling.
 Delete-to-clear and its footer hint are not implemented because DMM independently handles
 Delete as Reset. Automated mocks do not establish safe native event interception.
