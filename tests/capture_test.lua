@@ -116,6 +116,11 @@ print('PASS queued short clicks consumed exactly once without IsPressed; net mod
 
 i,s,slider=fixture(82,false)
 s.SelectedKey={Key={}}
-assert(M.tick(i,log) and slider.writes==0)
+for attempt=1,3 do
+    assert(M.tick(i,log)==false and slider.writes==0)
+end
 assert(events[1]:find('SELECTED_KEY_READ_FAILED',1,true),'missing FKey name was treated as a literal key')
-print('PASS missing key name is rejected without stock writes')
+assert(#events==1,'persistent unreadable key repeated its warning')
+s.SelectedKey=chord('R')
+assert(M.tick(i,log) and not i.readWarning and slider.writes==0)
+print('PASS unreadable key reports failure without writes; readable key recovers')

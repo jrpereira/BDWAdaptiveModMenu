@@ -222,6 +222,26 @@ emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now)
 assert(scans==eventScans+1 and builds==eventBuilds,'adoption/event burst repeated discovery or construction')
 print('PASS same-stack page events coalesce; adopted page needs only one traversal')
+local healthyTick=package.loaded.key_selector.tick
+fail=false
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+package.loaded.key_selector.tick=function() return false end
+untilTime(now+200)
+assert(instance.failures==2 and not instance.disabled)
+package.loaded.key_selector.tick=healthyTick
+untilTime(now+100)
+assert(instance.failures==0 and not instance.disabled,'successful update did not reset consecutive failures')
+package.loaded.key_selector.tick=function() return false end
+untilTime(now+300)
+assert(instance.disabled and instance.failures==3)
+local stoppedCalls=calls
+untilTime(now+60000)
+assert(calls==stoppedCalls and #queue==0,'failed controls kept scheduling updates')
+package.loaded.key_selector.tick=healthyTick
+row.decoration=nil
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(not instance.disabled and instance.failures==0)
+print('PASS false-return failures stop after three updates; page readiness recovers')
 fail=true;untilTime(now+500)
 assert(instance.disabled)
 local stoppedNative=calls
