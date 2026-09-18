@@ -119,7 +119,7 @@ function M.install(log,onChange,onRetire)
         return function(...)
             local ok,err=pcall(fn,...)
             if not ok then
-                scope.enabled=false;closeOwner()
+                closeOwner()
                 log('MENU_SCOPE_FAILED',tostring(err))
             end
         end

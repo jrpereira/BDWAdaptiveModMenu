@@ -77,6 +77,14 @@ function M.save(instance)
         instance.pairHovered=instance.pair.hovered
         instance.pairLastText=instance.pair.lastText
     end
+    local saved=instance.savedState
+    local changed=not saved
+    if saved then
+        for _,key in ipairs(stateKeys) do
+            if saved[key]~=instance[key] then changed=true;break end
+        end
+    end
+    if not changed then return end
     local fields={}
     for i,key in ipairs(stateKeys) do fields[i]=encode(instance[key]) end
     local text=markerPrefix..table.concat(fields,'\n')..'\n'
@@ -84,6 +92,9 @@ function M.save(instance)
         assert(setText(instance.stateWidget,text),'row state write failed')
         instance.stateText=text
     end
+    saved=saved or {}
+    for _,key in ipairs(stateKeys) do saved[key]=instance[key] end
+    instance.savedState=saved
 end
 
 local function dirtyText(widget)
@@ -309,6 +320,8 @@ function M.adopt(row,descriptor,modeRow,clicks)
                 if stateKeys[n] then instance[stateKeys[n]]=decode(field) end
             end
             assert(n==#stateKeys,'incompatible row state')
+            instance.savedState={}
+            for _,key in ipairs(stateKeys) do instance.savedState[key]=instance[key] end
             for edge=1,4 do instance.keyEdges[edge]=Discovery.contentOf(Discovery.childAt(overlay,edge)) end
             if instance.pairIndex then
                 assert(modeRow,'paired row unavailable')
