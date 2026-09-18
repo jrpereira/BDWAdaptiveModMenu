@@ -6,7 +6,7 @@ row. Your mod continues to own its configuration and gameplay behavior; DMM owns
 pending edits, dirty state, Apply, saving, Reset, and Restore.
 
 The decorator does **not** register gameplay bindings, implement Tap/Hold timing,
-or depend on UE4SSLuaEventBridge. A provider such as ExtendedControls uses the bridge
+or depend on UE4SSLuaEventBridge. A provider such as QuickslotsForever uses the bridge
 separately. Choosing a key in the menu only changes a setting.
 
 ## Requirements and installation
@@ -92,7 +92,7 @@ Default = 0
 By convention a primary ID `Interact` pairs with `InteractMode`. Keep these rows
 adjacent and in the same group. IDs, not displayed labels, identify the settings.
 The implementation also reads an optional `Pair = OtherModeId` on the primary row,
-but the suffix convention is sufficient and is what ExtendedControls uses.
+but the suffix convention is sufficient and is what QuickslotsForever uses.
 
 A picker without explicit decoration remains a stock control. No mode row is
 required for a standalone keybind. Use matching ordered `PresetValues` and
