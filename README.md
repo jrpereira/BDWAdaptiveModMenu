@@ -2,7 +2,7 @@
 
 Runtime settings decoration for The Blood of Dawnwalker mods, integrating with
 Dawnwalker Mod Menu without modifying or redistributing its source.
-Current source: **0.1.31**. See [release notes](CHANGELOG.md).
+Current source: **0.1.32**. See [release notes](CHANGELOG.md).
 
 ## For mod developers
 

@@ -1,3 +1,7 @@
+# 0.1.32
+
+Unreadable selected keys now count toward the existing three-failure limit, stopping updates to broken controls until the next page event. Successful reads reset consecutive failures. Deployment tooling never creates enabled.txt, including on fresh installs, and preserves existing enablement. Regression coverage verifies failure shutdown, recovery and enablement preservation. Native gameplay-impact verification remains pending.
+
 # 0.1.31
 
 Promote the rc.2 runtime fixes to stable. Runtime behavior is unchanged apart from the version label. Keep diagnostic inspection tooling and evidence outside public source and history. Automated regression and packaging checks pass; native gameplay-impact verification remains pending.
