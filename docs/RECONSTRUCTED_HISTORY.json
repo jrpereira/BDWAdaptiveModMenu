@@ -14,6 +14,18 @@
         "menu_scope.lua": "238c88d130b31f794720027bf78be96c6210a15de472c7118371115bc555bcdb",
         "registrations.lua": "4a5679e6d9a41e0e683589ccd6ae5ebc3050d5cc0f0fa041f4c5a1cf7fc56dc4",
         "widget_discovery.lua": "6039434656d384de65d9650ff9db25a0a1b9656068ad05f75e8723463e82a5e5"
+      },
+      "display_version": "0.1.22",
+      "reconstruction_commit": "f193885e168460defcde8f648539f7ba7f4b0c2e",
+      "git_blob_sha256": {
+        "Scripts/click_delivery.lua": "f47632f50e2aa74f4722cae323f3095c35f8a8411e3898364c3d61cee7bd0b60",
+        "Scripts/dmm_binding.lua": "7359529b5e3b711660125b1529fe299bf99feb9fcb42cb4883b5a171cf80aea2",
+        "Scripts/key_codes.lua": "c47e5168cca29d9532d459983535724d8d40372bf7931000cfadc5d298852b57",
+        "Scripts/key_selector.lua": "b60d05da04f94eba5ed7b4644e4577d8dae2a16c436a548cdba7dfc33cca2e18",
+        "Scripts/main.lua": "42678ced2d3711357b91db53abbb293eee02fb7c6cfaea0ac1aea824d7241db1",
+        "Scripts/menu_scope.lua": "7d1b39e38a3b1a0fa31e6f213e6ca9865f05ecebd240c6376a8a0a3010326bad",
+        "Scripts/registrations.lua": "48336bd126ca0e11eadd2972db29563e20fb9c175356dfb7a8d5ae0cd11c77f5",
+        "Scripts/widget_discovery.lua": "de1a602ad2b410222ba4d6f03d80d7b2dfd0729d1a105ad79dee24a2ad3dea4f"
       }
     },
     {
@@ -28,7 +40,20 @@
         "menu_scope.lua": "2fee16a03348217592bca2741b93bc11c415f128f9a2de7a6123777ce4ea303e",
         "registrations.lua": "a91dc97c3c6da9202ca9aeeb1003635dc007c86d40622d58e63979b7cffabd4b",
         "widget_discovery.lua": "60220f6ee0ac348edb38c837036d565e187f02a10076fd7f5a5a4b756e354d84"
+      },
+      "display_version": "0.1.29",
+      "reconstruction_commit": "4014bcc10b9d07e6bec689505cb0256b010f43d2",
+      "git_blob_sha256": {
+        "Scripts/click_delivery.lua": "f5c0bc85bc02510a09bc8a3f1acf21f2c9969a8390827f71663098ac7b7f9d85",
+        "Scripts/dmm_binding.lua": "b8129ce5ccb43a23b470d52eeebf18167519de9701e0f153287975d801768e4d",
+        "Scripts/key_codes.lua": "c47e5168cca29d9532d459983535724d8d40372bf7931000cfadc5d298852b57",
+        "Scripts/key_selector.lua": "fe77f75a9fafde8ef0bc5200ee279f04413d70508df618e1ebc32d2dadb51125",
+        "Scripts/main.lua": "068dd2700fd7d207102aff5f1d98dced2ca0ad1ad11c7c386d602965f1b22847",
+        "Scripts/menu_scope.lua": "1841727c7172a3b9f943a2430372ca0985cf432a1754c662445bf1e0707a5439",
+        "Scripts/registrations.lua": "b8f296b560ba96d226dffb5e866039dfc0d6f3a59544ee47fc93f12e1be809bd",
+        "Scripts/widget_discovery.lua": "65548259ad141336ded62f51b5f4f1da66db2d238a5be7d2cbfe53be61a7fccc"
       }
     }
-  ]
+  ],
+  "normalization": "Archived SHA256 values describe original snapshot bytes. Existing .gitattributes may normalize CRLF to LF in Git blobs. Reconstructed source is not claimed byte-identical after that normalization."
 }

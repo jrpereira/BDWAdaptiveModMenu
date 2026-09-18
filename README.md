@@ -2,7 +2,7 @@
 
 Runtime settings decoration for The Blood of Dawnwalker mods, integrating with
 Dawnwalker Mod Menu without modifying or redistributing its source.
-Current source: **0.1.13 candidate**. See [candidate notes](CHANGELOG.md).
+Current source: **0.1.31-rc.2**. See [candidate notes](CHANGELOG.md).
 
 ## For mod developers
 
@@ -14,13 +14,18 @@ by the automated registration test. No provider-side Lua registration call is ne
 
 ## Installation
 
-With the game closed, copy the archive's `ModMenuDecorator` directory into UE4SS `Mods`.
+With the game closed, copy the prepared `ModMenuDecorator` directory into UE4SS `Mods`.
 Install Dawnwalker Mod Menu separately. Provider mods explicitly opt in using
 `Decoration=keybind` metadata. Configuration remains owned by each provider and DMM.
 
 ## Current limitations
 
-Key capture, Escape cancellation and translucent surfaces require in-game verification.
+Basic key capture/cancellation and short picker clicks passed earlier native checks.
+The user reports the v0.1.27 functional checklist passes: menu entry, Back/page switching,
+close/reopen/loading, key/Mode edits, cancellation, Reset/Restore and Apply.
+Subsequent repeated menu/load cycles exposed missing decorations in v0.1.28.
+The v0.1.31-rc.2 improvements have automated coverage; native gameplay comparison is pending.
+No permanent discovery timer runs during gameplay; menu controls retain scoped polling.
 Delete-to-clear and its footer hint are not implemented because DMM independently handles
 Delete as Reset. Automated mocks do not establish safe native event interception.
 

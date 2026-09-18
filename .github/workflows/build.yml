@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
 jobs:
+  repository-hygiene:
+    uses: ./.github/workflows/repository-hygiene.yml
   lua-and-package:
     runs-on: ubuntu-latest
     steps:
