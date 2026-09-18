@@ -150,7 +150,10 @@ function M.activeTrees(host,allowed)
         snapshot.count=snapshot.count+1
         if not allowed() then complete=false;return end
         if isA(widget,'ScrollBox') then snapshot.scrolls[#snapshot.scrolls+1]=widget end
-        if isA(widget,'PanelWidget') then
+        if isA(widget,'WidgetSwitcher') then
+            local selected=widget:GetActiveWidgetIndex()
+            if selected>=0 then walk(widget:GetChildAt(selected),depth+1,route,selected) end
+        elseif isA(widget,'PanelWidget') then
             for i=0,widget:GetChildrenCount()-1 do walk(widget:GetChildAt(i),depth+1,route,i) end
         end
     end

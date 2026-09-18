@@ -1,8 +1,8 @@
-local VERSION='0.1.29'
+local VERSION='0.1.30'
 local Registrations=require('registrations')
 local Binding=require('dmm_binding')
 local function log(event,detail)
-    if event=='DUPLICATE_PROVIDER_SKIPPED' or event:find('FAILED',1,true) or event:find('UNAVAILABLE',1,true) or event:find('EXCEPTION',1,true) then
+    if event=='SELECTOR_DISABLED' or event=='DUPLICATE_PROVIDER_SKIPPED' or event:find('FAILED',1,true) or event:find('UNAVAILABLE',1,true) or event:find('EXCEPTION',1,true) then
         print(string.format('[ModMenuDecorator] %s %s\n',event,detail or ''))
     end
 end
