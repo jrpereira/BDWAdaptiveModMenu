@@ -120,6 +120,7 @@ function M.install(registry,log)
     local function tick(path,epoch)
         local function allowed() return scope:matches(path,epoch) end
         if not allowed() then return end
+        if not scope:ownerLive() then return end
         local host=StaticFindObject(path)
         if not allowed() then return end
         if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated()
@@ -257,6 +258,11 @@ function M.install(registry,log)
         end
         schedule(path,epoch,0)
         if scope:matches(path,epoch) then structural(path,epoch) end
+    end,function(path)
+        if path and not hosts[path] then return end
+        if path then hosts[path]=nil else hosts={} end
+        boundScrolls,decoratedSliders,instances=nil,nil,nil
+        clicks:retire(path)
     end)
     if not scope then return false,err end
     return true

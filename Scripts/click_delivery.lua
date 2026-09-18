@@ -41,6 +41,14 @@ function M.new(log)
         button.OnClicked:Add(button,FName('ForceLayoutPrepass'))
         self.owners[address]={instance=instance,path=self.path,full=full}
     end
+    function self:retire(path)
+        for address,owner in pairs(self.owners) do
+            if not path or owner.path==path then
+                owner.instance.pendingClicks=0
+                self.owners[address]=nil
+            end
+        end
+    end
     function self:forget(instance)
         instance.pendingClicks=0
         for address,owner in pairs(self.owners) do
