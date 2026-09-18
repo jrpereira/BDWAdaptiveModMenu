@@ -34,6 +34,7 @@ function M.install(registry,log)
     local scope,schedule
     local active=nil
     local pending={}
+    local eventTicket=nil
     local function ledger(instance)
         local refs={}
         local function add(target,keys)
@@ -56,7 +57,7 @@ function M.install(registry,log)
         for i,ref in ipairs(instance.liveRefs) do
             if not allowed() then return false end
             local object=resolve(routes[ref.address])
-            if not object then return false end
+            if not object then return false,'unavailable control: '..tostring(ref.key) end
             fresh[i]=object
         end
         if not allowed() then return false end
@@ -71,22 +72,37 @@ function M.install(registry,log)
             local row=rows[i]
             if descriptor and row.kind=='slider' then
                 local modeRow=descriptor.modeId and byId[descriptor.modeId]
-                local ok,instance=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)
+                local ok,instance,detail=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)
                 if ok and not instance then
-                    ok,instance=pcall(KeySelector.decorate,row,descriptor,log)
+                    ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log)
+                    if ok and instance then state.constructed=true end
                     if ok and instance and modeRow then
                         local paired,result,err=pcall(KeySelector.mergePair,instance,modeRow,log,clicks)
                         if not paired or not result then
                             clicks:forget(instance)
-                            log('PAIR_FAILED',tostring(paired and err or result))
+                            log('PAIR_FAILED',provider.id..'.'..setting.id..': '..tostring(paired and err or result))
                         end
                     end
                 end
                 if ok and instance then
-                    ledger(instance)
-                    instance.undo=nil;instance.pairUndo=nil -- rollback receipts are construction-only
-                    state.instances[#state.instances+1]=instance
-                else log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(instance)) end
+                    local recorded,recordError=pcall(ledger,instance)
+                    if recorded then
+                        instance.id=provider.id..'.'..setting.id
+                        instance.undo=nil;instance.pairUndo=nil -- rollback receipts are construction-only
+                        state.instances[#state.instances+1]=instance
+                    else
+                        clicks:forget(instance)
+                        -- Roll back only this just-constructed row, never an adopted
+                        -- decoration whose lifetime belongs to the existing page.
+                        if instance.undo then
+                            local restored,result=pcall(KeySelector.restore,instance,function() return true end)
+                            if not restored or not result then
+                                log('RESTORE_FAILED',provider.id..'.'..setting.id..': '..tostring(restored and 'rollback incomplete' or result))
+                            end
+                        end
+                        log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(recordError))
+                    end
+                else log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(ok and (detail or 'no decoration returned') or instance)) end
             end
         end
     end
@@ -109,13 +125,14 @@ function M.install(registry,log)
             local snapshot=Discovery.activeTrees(host,allowed)[1]
             if not allowed() then return end
             if snapshot then
+                state.routes=snapshot.routes
                 for _,scroll in ipairs(snapshot.scrolls) do
                     if not allowed() then return end
                     local rows=Discovery.rowsFromScroll(scroll) or {}
                     local candidates=candidateProviders(registry,rows)
                     if #candidates==1 then bindPage(state,rows,candidates[1]) end
                 end
-                if #state.instances>0 and allowed() then
+                if state.constructed and #state.instances>0 and allowed() then
                     local rebuilt=Discovery.activeTrees(host,allowed)[1]
                     if rebuilt then state.routes=rebuilt.routes end
                 end
@@ -125,24 +142,30 @@ function M.install(registry,log)
         local instances=state.instances
         local resolve=Discovery.routeResolver(host,allowed)
         if not resolve then scope:invalidate('tree root unavailable');return end
+        local usable=0
         for _,instance in ipairs(instances) do
             if not allowed() then return end
             if not instance.disabled then
-                local freshOK,fresh=pcall(refresh,instance,allowed,state.routes,resolve)
+                local freshOK,fresh,refreshError=pcall(refresh,instance,allowed,state.routes,resolve)
                 local ok,alive=false,false
                 if freshOK and fresh and allowed() then ok,alive=pcall(KeySelector.tick,instance,log) end
                 if ok and alive then instance.failures=0
                 else
                     instance.failures=(instance.failures or 0)+1
-                    if instance.failures==1 then log('SELECTOR_TICK_FAILED','temporarily unavailable') end
+                    if instance.failures==1 then
+                        local reason=not freshOK and fresh or (not fresh and refreshError) or (not ok and alive) or 'control unavailable'
+                        log('SELECTOR_TICK_FAILED',instance.id..': '..tostring(reason))
+                    end
                     if instance.failures>=3 and allowed() then
                         instance.disabled=true
                         clicks:forget(instance)
-                        log('SELECTOR_DISABLED','updates stopped until next page event')
+                        log('SELECTOR_DISABLED',instance.id..': updates stopped until next page event')
                     end
                 end
             end
+            if not instance.disabled then usable=usable+1 end
         end
+        if usable==0 then scope:dormant();return end
         if allowed() then schedule(path,epoch,100) end
     end
     local function fail(path,epoch,event,err)
@@ -174,13 +197,25 @@ function M.install(registry,log)
     end
     local err
     scope,err=MenuScope.install(log,function(path,epoch)
-        -- Drop only temporary control routing. Decoration and state remain on rows.
-        active=nil
-        clicks:retire(nil)
-        if not path then clicks:close();return end
-        local clickOK,clickError=clicks:open(path)
-        if not clickOK then log('CLICK_HOOK_FAILED',tostring(clickError)) end
-        schedule(path,epoch,0)
+        if not path then
+            eventTicket=nil;active=nil;clicks:retire(nil);clicks:close();return
+        end
+        -- Multiple DMM switcher calls in the same stack share one deferred refresh.
+        -- Each event has already revoked the previous epoch synchronously.
+        if eventTicket then eventTicket.path=path;eventTicket.epoch=epoch;return end
+        local ticket={path=path,epoch=epoch}
+        eventTicket=ticket
+        local queued,queueError=pcall(ExecuteWithDelay,0,function()
+            if eventTicket~=ticket then return end
+            eventTicket=nil
+            local currentPath,currentEpoch=ticket.path,ticket.epoch
+            if not scope:matches(currentPath,currentEpoch) then return end
+            active=nil;clicks:retire(nil)
+            local clickOK,clickError=clicks:open(currentPath)
+            if not clickOK then log('CLICK_HOOK_FAILED',tostring(clickError)) end
+            schedule(currentPath,currentEpoch,0)
+        end)
+        if not queued then eventTicket=nil;fail(path,epoch,'SCHEDULING_FAILED',queueError) end
     end,function(path)
         clicks:retire(path)
     end)
