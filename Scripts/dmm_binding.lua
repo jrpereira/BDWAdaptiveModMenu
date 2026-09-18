@@ -92,6 +92,14 @@ function M.install(registry,log)
                         state.instances[#state.instances+1]=instance
                     else
                         clicks:forget(instance)
+                        -- Roll back only this just-constructed row, never an adopted
+                        -- decoration whose lifetime belongs to the existing page.
+                        if instance.undo then
+                            local restored,result=pcall(KeySelector.restore,instance,function() return true end)
+                            if not restored or not result then
+                                log('RESTORE_FAILED',provider.id..'.'..setting.id..': '..tostring(restored and 'rollback incomplete' or result))
+                            end
+                        end
                         log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(recordError))
                     end
                 else log('DECORATE_FAILED',provider.id..'.'..setting.id..': '..tostring(ok and (detail or 'no decoration returned') or instance)) end
