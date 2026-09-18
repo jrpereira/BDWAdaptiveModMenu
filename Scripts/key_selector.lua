@@ -527,6 +527,12 @@ local function transactional(fn,rowOf,isPair)
         local args={...}
         local row=rowOf(args)
         local receipt={saved={},roots={}}
+        local priorState,priorText
+        if isPair then
+            priorState={}
+            for _,key in ipairs(stateKeys) do priorState[key]=args[1][key] end
+            priorText=args[1].stateText
+        end
         local function save(widget,get,set)
             if not valid(widget) then return end
             receipt.saved[#receipt.saved+1]={ref=identity(widget),set=set,value=widget[get](widget)}
@@ -545,18 +551,36 @@ local function transactional(fn,rowOf,isPair)
         local count=Discovery.childCount(row.surface)
         for i=0,count-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
         local ok,result,err=pcall(fn,table.unpack(args))
-        for i=count,Discovery.childCount(row.surface)-1 do
-            receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
-        end
-        if ok and result then
-            if isPair then
-                args[1].pairUndo=receipt
-            else result.undo=receipt end
+        local recorded,recordError=pcall(function()
+            for i=count,Discovery.childCount(row.surface)-1 do
+                receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
+            end
+        end)
+        if ok and result and recorded then
+            if isPair then args[1].pairUndo=receipt else result.undo=receipt end
             return result,err
         end
-        undo(receipt,function() return true end)
-        if isPair then args[1].pair=nil;args[1].pairIndex=nil end
-        return nil,ok and err or result
+        -- Still inside this synchronous construction transaction: remove attached
+        -- roots directly even if recording their primitive identities failed.
+        local removed=true
+        for i=Discovery.childCount(row.surface)-1,count,-1 do
+            local clean=pcall(function() Discovery.childAt(row.surface,i):RemoveFromParent() end)
+            if not clean then removed=false end
+        end
+        receipt.roots={}
+        local restored=undo(receipt,function() return true end)
+        if isPair then
+            local instance=args[1]
+            instance.pair=nil
+            for _,key in ipairs(stateKeys) do instance[key]=priorState[key] end
+            if instance.stateWidget and priorText then
+                if not setText(instance.stateWidget,priorText) then restored=false end
+            end
+            instance.stateText=priorText;instance.savedState=priorState
+        end
+        local reason=not recorded and recordError or (ok and err or result)
+        if not removed or not restored then reason=tostring(reason)..'; rollback incomplete' end
+        return nil,reason
     end
 end
 M.decorate=transactional(M.decorate,function(args) return args[1] end,false)
