@@ -80,7 +80,11 @@ end
 
 local function styleNormal(instance)
     for _,edge in ipairs(instance.keyEdges or {}) do pcall(function() edge:SetBrushColor({R=0.55,G=0.52,B=0.46,A=0.85}) end) end
-    if valid(instance.keyInner) then pcall(function() instance.keyInner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.30}) end) end
+    if valid(instance.keyInner) then
+        instance.keyInner:SetBrushColor(instance.keyHovered
+            and {R=0.95,G=0.63,B=0.08,A=0.22}
+            or {R=0.12,G=0.12,B=0.12,A=0.30})
+    end
 end
 
 local function styleSelecting(instance)
@@ -338,6 +342,14 @@ function M.tick(instance,log)
     if not valid(instance.row.wrapper) then return false end
     local okParent,parent=pcall(function() return instance.row.wrapper:GetParent() end)
     if not okParent or not valid(parent) then return false end
+
+    -- Pointer feedback belongs to the key hit target, not the whole stock row.
+    -- Capture styling wins until capture ends, even if the pointer moves away.
+    local keyHovered=instance.selector:IsHovered()==true
+    if keyHovered~=instance.keyHovered then
+        instance.keyHovered=keyHovered
+        if not instance.wasSelecting then styleNormal(instance) end
+    end
 
     -- Highlight only the paired picker's surface when its hit target is hovered.
     -- Keep the stock row highlight and key-capture styling independently owned.
