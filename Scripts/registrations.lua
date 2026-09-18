@@ -15,10 +15,6 @@ local function child(node,wanted)
     end
 end
 
-local function countEntries(t)
-    local n=0; if type(t)=='table' then for _ in pairs(t) do n=n+1 end end; return n
-end
-
 local function read(path)
     local f,err=io.open(path,'rb'); if not f then return nil,err or 'open failed' end
     local data=f:read(262145); f:close()
@@ -89,32 +85,16 @@ local function fileNodePath(file)
     elseif type(file)=='string' and file:lower():match('mod_settings%.ini$') then return file end
 end
 
-local function collectManifestPaths(root,paths,seen,stats,maxDepth)
-    local visited={}
-    local function add(path)
-        if type(path)~='string' or path=='' then return end
-        local key=path:lower(); if seen[key] then return end
-        seen[key]=true; paths[#paths+1]=path; stats.manifestNodes=stats.manifestNodes+1
+local function collectManifestPaths(node,paths,seen)
+    local function add(file)
+        local path=fileNodePath(file)
+        if not path or path=='' then return end
+        local key=path:lower()
+        if seen[key] then return end
+        seen[key]=true; paths[#paths+1]=path
     end
-    local function walk(node,depth)
-        if type(node)~='table' or visited[node] or depth>(maxDepth or 12) then return end
-        visited[node]=true; stats.tables=stats.tables+1
-        add(fileNodePath(node))
-        if type(node.__files)=='table' then
-            stats.fileTables=stats.fileTables+1
-            for _,file in pairs(node.__files) do stats.files=stats.files+1; add(fileNodePath(file)) end
-        end
-        for k,v in pairs(node) do if k~='__files' and type(v)=='table' then walk(v,depth+1) end end
-    end
-    walk(root,0)
-end
-
-local function describeModsRoot(mods,log)
-    log('DISCOVERY_ROOT',tostring(mods.__absolute_path or '<no absolute path>'))
-    local names={}
-    for k,v in pairs(mods) do if k~='__files' and type(v)=='table' then names[#names+1]=tostring(v.__name or k) end end
-    table.sort(names); log('DISCOVERY_MODDIRS',#names>0 and table.concat(names,', ') or '<none>')
-    log('DISCOVERY_ROOT_FILES',tostring(countEntries(mods.__files)))
+    add(node)
+    for _,file in pairs(type(node.__files)=='table' and node.__files or {}) do add(file) end
 end
 
 function M.discover(log)
@@ -122,33 +102,62 @@ function M.discover(log)
     if type(IterateGameDirectories)~='function' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories unavailable'); return result end
     local ok,tree=pcall(IterateGameDirectories)
     if not ok or type(tree)~='table' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories failed: '..tostring(tree)); return result end
-    log('DISCOVERY_TREE','IterateGameDirectories returned '..countEntries(tree)..' root entries')
 
     local game=child(tree,'Game')
     if not game then for _,candidate in pairs(tree) do if type(candidate)=='table' and child(candidate,'Binaries') then game=candidate; break end end end
     local binaries=child(game,'Binaries'); local win64=child(binaries,'Win64'); local ue4ss=child(win64,'ue4ss') or child(win64,'UE4SS'); local mods=child(ue4ss,'Mods')
     if not mods then log('REGISTRY_UNAVAILABLE','Mods directory unavailable'); return result end
-    describeModsRoot(mods,log)
 
-    local paths,seen={},{}; local stats={tables=0,fileTables=0,files=0,manifestNodes=0}
-    collectManifestPaths(mods,paths,seen,stats,12)
-    log('DISCOVERY_SCAN',string.format('Mods subtree: %d tables, %d file tables, %d files, %d manifest(s)',stats.tables,stats.fileTables,stats.files,#paths))
+    -- Loader eligibility, not proof of runtime initialization. Never search an
+    -- archived/nested folder for the DMM dependency or start UI work without it.
+    local function fileNamed(node,wanted)
+        for _,file in pairs(type(node)=='table' and node.__files or {}) do
+            if type(file)=='table' and tostring(file.__name):lower()==wanted:lower() then return file end
+        end
+    end
+    local flags={}
+    local modsFile=fileNamed(mods,'mods.txt')
+    if modsFile and modsFile.__absolute_path then
+        local contents=read(modsFile.__absolute_path)
+        for line in ((contents or '')..'\n'):gmatch('([^\n]*)\n') do
+            local name,on=trim(line):match('^([^;#][^:]-)%s*:%s*([01])%s*[;#]?.*$')
+            if name then flags[trim(name):lower()]=on=='1' end
+        end
+    end
+    local function enabled(node,name)
+        return fileNamed(node,'enabled.txt')~=nil or flags[name:lower()]==true
+    end
+    local dmm=child(mods,'DawnwalkerModMenu')
+    result.dmmEligible=dmm~=nil and enabled(dmm,'DawnwalkerModMenu')
+        and fileNamed(child(dmm,'Scripts'),'main.lua')~=nil
+    if not result.dmmEligible then
+        log('DMM_DEPENDENCY_INACTIVE','no enabled direct Mods/DawnwalkerModMenu with Scripts/main.lua; no UI discovery installed')
+        return result
+    end
+
+    local paths,seen={},{}
+    for name,node in pairs(mods) do
+        if name~='__files' and type(node)=='table' and enabled(node,tostring(node.__name or name)) then
+            collectManifestPaths(node,paths,seen)
+        end
+    end
     table.sort(paths)
 
     for _,path in ipairs(paths) do
-        log('MANIFEST_FOUND',path)
         local content,readErr=read(path)
         if not content then log('MANIFEST_READ_FAILED',path..': '..tostring(readErr))
         else
             local provider,parseErr=parseManifest(path,content)
             if not provider then log('MANIFEST_PARSE_FAILED',path..': '..tostring(parseErr))
+            elseif result.providerModels[provider.id] then
+                -- DMM sorts manifest paths and keeps the first provider for each Id.
+                -- Skip the entire duplicate, including settings with different Ids.
+                log('DUPLICATE_PROVIDER_SKIPPED',path..': duplicate Mod Id '..provider.id)
             else
                 result.manifests=result.manifests+1; result.providers=result.providers+1
                 result.providerModels[provider.id]=provider; result.providerList[#result.providerList+1]=provider
-                log('MANIFEST_PARSED',string.format('%s (%d settings, %d DMM rows)',provider.id,#provider.settings,#provider.choices))
                 for _,setting in ipairs(provider.settings) do
                     local decoration=decorationOf(setting)
-                    if decoration~='' then log('DECORATION_DECLARED',provider.id..'.'..setting.__id..' = '..decoration..' ['..kindOf(setting)..']') end
                     if decoration=='keybind' then
                         local kind=kindOf(setting)
                         if kind=='integer' or kind=='slider' then
@@ -165,11 +174,9 @@ function M.discover(log)
                                         d.modeOptions[#d.modeOptions+1]=trim(label)
                                     end
                                     if #d.modeOptions==0 then d.modeOptions={''} end
-                                    log('MODE_PAIR',provider.id..'.'..d.modeId..' -> '..provider.id..'.'..d.settingId)
-                                elseif mode then log('MODE_LEFT_STOCK',provider.id..'.'..mode.__id..' is present but not a decorated keybind picker') end
+                                end
                                 result.decorations[#result.decorations+1]=d
                                 result.byProvider[provider.id]=result.byProvider[provider.id] or {}; result.byProvider[provider.id][d.settingId]=d
-                                log('KEYBIND_REGISTERED',provider.id..'.'..d.settingId..string.format(' range=%s..%s',tostring(minimum),tostring(maximum)))
                             else log('DECORATION_SKIPPED',provider.id..'.'..setting.__id..': keybind requires valid Minimum/Maximum') end
                         end
                     end
