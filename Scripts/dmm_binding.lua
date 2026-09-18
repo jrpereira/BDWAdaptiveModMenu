@@ -26,40 +26,74 @@ end
 
 function M.install(registry,log)
     if not registry.dmmEligible then return false,'DMM direct-folder dependency inactive' end
-    if type(StaticFindObject)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
-        return false,'StaticFindObject/LoopAsync/ExecuteInGameThread unavailable'
+    for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread','UnregisterHook'}) do
+        if type(_G[api])~='function' then return false,api..' unavailable' end
     end
-    local scope,scopeError=MenuScope.install(log)
-    if not scope then return false,'required menu lifecycle hooks unavailable: '..tostring(scopeError) end
-    -- Instance identities are strings/addresses captured while fresh. Replace
-    -- every widget used by tick with the current snapshot's wrapper before use.
+    local scope,schedule
+    local hosts,relayOwners={},{}
+    local boundScrolls,decoratedSliders,instances
+    local activePath
+    local pending={}
+    local eventHooks={}
+    local function unhook()
+        for _,h in ipairs(eventHooks) do pcall(UnregisterHook,h[1],h[2],h[3]) end
+        eventHooks={}
+    end
+    local function event(kind,context)
+        local path,epoch=scope:current()
+        if not path then return end
+        local receiver=context:get()
+        local owner=relayOwners[tostring(receiver:GetAddress())]
+        if not owner or owner.path~=path then return end
+        local instance=owner.instance
+        if receiver:GetFullName()~=instance.relayFullName then return end
+        if kind=='click' then instance.pendingClicks=(instance.pendingClicks or 0)+1 end
+        schedule(path,epoch,0)
+    end
+    local function hookEvents()
+        if #eventHooks>0 then return true end
+        for _,spec in ipairs({{'/Script/UMG.Widget:ForceLayoutPrepass','click'},
+                              {'/Script/UMG.InputKeySelector:SetSelectedKey','key'}}) do
+            local ok,pre,post=pcall(RegisterHook,spec[1],function() end,function(context)
+                local success,err=pcall(event,spec[2],context)
+                if not success then log('EVENT_FAILED',tostring(err)) end
+            end)
+            if not ok then unhook();return false end
+            eventHooks[#eventHooks+1]={spec[1],pre,post}
+        end
+        return true
+    end
     local function ledger(instance)
         local refs={}
         local function add(target,keys)
             for _,key in ipairs(keys) do
                 local object=target[key]
-                if object then refs[#refs+1]={target=target,key=key,address=Discovery.address(object),name=object:GetFName():ToString()} end
+                if object then
+                    local full=object:GetFullName()
+                    refs[#refs+1]={target=target,key=key,address=Discovery.address(object),full=full,path=assert(full:match('^%S+ (.+)$'))}
+                end
             end
         end
-        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText'})
+        add(instance,{'selector','relay','keyBox','keyFrame','keyInner','keyText'})
         add(instance.row,{'slider','wrapper','labelWidget','valueWidget'})
         if instance.pair then add(instance.pair,{'button','inner','nav','valueWidget','text'}) end
-        for index,edge in ipairs(instance.keyEdges or {}) do
-            refs[#refs+1]={target=instance.keyEdges,key=index,address=Discovery.address(edge),name=edge:GetFName():ToString()}
-        end
+        for i in ipairs(instance.keyEdges or {}) do add(instance.keyEdges,{i}) end
         instance.liveRefs=refs
+        instance.relayId=Discovery.address(instance.relay)
+        instance.relayFullName=instance.relay:GetFullName()
     end
-    local function refresh(instance,widgets,names)
-        for _,ref in ipairs(instance.liveRefs) do
-            if not widgets[ref.address] or names[ref.address]~=ref.name then return false end
+    local function refresh(instance,allowed)
+        local fresh={}
+        for i,ref in ipairs(instance.liveRefs) do
+            if not allowed() then return false end
+            local object=StaticFindObject(ref.path)
+            if not Discovery.valid(object) or Discovery.address(object)~=ref.address or object:GetFullName()~=ref.full then return false end
+            fresh[i]=object
         end
-        for _,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=widgets[ref.address] end
+        if not allowed() then return false end
+        for i,ref in ipairs(instance.liveRefs) do ref.target[ref.key]=fresh[i] end
         return true
     end
-    local boundScrolls={}
-    local decoratedSliders={}
-    local instances={}
-
     local function bindPage(scroll,rows,provider)
         local scrollAddr=Discovery.address(scroll); if not scrollAddr or boundScrolls[scrollAddr] then return true end
         local page={providerId=provider.id,scrollName=scroll:GetFName():ToString(),rowsById={},ordered={},instances={}}
@@ -69,11 +103,9 @@ function M.install(registry,log)
             local row=rows[i]
             local binding={providerId=provider.id,settingId=setting.id,sourceIndex=i,row=row,kind=row.kind,wrapperAddr=Discovery.address(row.wrapper),wrapperName=row.wrapper:GetFName():ToString()}
             page.rowsById[setting.id]=binding; page.ordered[i]=binding
-            log('ROW_BOUND',provider.id..'.'..setting.id..' index='..i..' kind='..row.kind)
         end
 
         boundScrolls[scrollAddr]=page
-        log('PAGE_MATCH',provider.id..' rows='..#rows)
 
         for _,binding in ipairs(page.ordered) do
             local descriptor=registry.byProvider[provider.id] and registry.byProvider[provider.id][binding.settingId]
@@ -86,7 +118,6 @@ function M.install(registry,log)
                         local ok,instanceOrErr=pcall(KeySelector.decorate,binding.row,descriptor,log)
                         if ok and instanceOrErr then
                             decoratedSliders[sliderAddr]=true; binding.instance=instanceOrErr; page.instances[#page.instances+1]=instanceOrErr; instances[#instances+1]=instanceOrErr
-                            log('DECORATED_ONCE',provider.id..'.'..binding.settingId..' slider='..sliderAddr)
                             if descriptor.modeId then
                                 local modeBinding=page.rowsById[descriptor.modeId]
                                 if modeBinding and modeBinding.kind=='picker' then
@@ -101,6 +132,7 @@ function M.install(registry,log)
                                 end
                             end
                             ledger(instanceOrErr)
+                            relayOwners[instanceOrErr.relayId]={instance=instanceOrErr,path=activePath}
                         else log('DECORATE_FAILED',provider.id..'.'..binding.settingId..': '..tostring(instanceOrErr)) end
                     else log('SKIP_ALREADY_DECORATED',provider.id..'.'..binding.settingId) end
                 end
@@ -109,90 +141,107 @@ function M.install(registry,log)
         return true
     end
 
-    local queuedEpoch,stopped=nil,false
-    local cachedPath,cachedReset=nil,nil
-    local function tick(path,epoch,reset)
+    local function tick(path,epoch)
         local function allowed() return scope:matches(path,epoch) end
         if not allowed() then return end
-        -- Resolve by exact live activation path; never enumerate the UObject array.
         local host=StaticFindObject(path)
         if not allowed() then return end
-        if not Discovery.valid(host) then scope:invalidate('host unavailable');return end
-        if cachedPath~=path or cachedReset~=reset then
-            boundScrolls={};decoratedSliders={};instances={}
-            cachedPath=path;cachedReset=reset
+        if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated() then
+            scope:invalidate('host inactive');return
         end
-        local widgets,names,scrolls={},{},{}
-        for _,snapshot in ipairs(Discovery.activeTrees(host,allowed)) do
-            for addr,widget in pairs(snapshot.widgets) do widgets[addr]=widget; names[addr]=snapshot.names[addr] end
-            for _,scroll in ipairs(snapshot.scrolls) do scrolls[#scrolls+1]=scroll end
+        local state=hosts[path]
+        if not state then
+            state={bound={},decorated={},instances={},ticks=10,attempts=0}
+            hosts[path]=state
         end
-        -- Closed/absent menus provide no current wrappers. Keep only dormant Lua
-        -- identities; do not dereference them or redecorate a surviving reopened tree.
-        if not allowed() then return end
-        if next(widgets)==nil then scope:invalidate('host inactive or tree unavailable');return end
-        local recognized=false
-        for _,scroll in ipairs(scrolls) do
+        activePath=path
+        boundScrolls,decoratedSliders,instances=state.bound,state.decorated,state.instances
+        state.ticks=state.ticks+1
+        if state.ticks>=10 then
+            state.ticks=0
+            local snapshots=Discovery.activeTrees(host,allowed)
             if not allowed() then return end
-            local addr=Discovery.address(scroll)
-            local page=boundScrolls[addr]
-            if page and names[addr]==page.scrollName then recognized=true;break end
-            if #candidateProviders(registry,Discovery.rowsFromScroll(scroll) or {})==1 then recognized=true;break end
-        end
-        -- An unrelated CommonUI host is not evidence that our dormant page died.
-        if not recognized then return end
-        for addr,page in pairs(boundScrolls) do
-            local alive=widgets[addr] and names[addr]==page.scrollName
-            for _,binding in ipairs(page.ordered) do
-                if not widgets[binding.wrapperAddr] or names[binding.wrapperAddr]~=binding.wrapperName then alive=false;break end
+            local snapshot=snapshots[1]
+            if snapshot then
+                for i=#instances,1,-1 do
+                    local instance=instances[i]
+                    local wrapperRef
+                    for _,ref in ipairs(instance.liveRefs) do
+                        if ref.target==instance.row and ref.key=='wrapper' then wrapperRef=ref;break end
+                    end
+                    if wrapperRef and not snapshot.widgets[wrapperRef.address] then
+                        relayOwners[instance.relayId]=nil
+                        for _,ref in ipairs(instance.liveRefs) do
+                            if ref.key=='slider' then decoratedSliders[ref.address]=nil end
+                        end
+                        table.remove(instances,i)
+                    end
+                end
+                for addr,page in pairs(boundScrolls) do
+                    local alive=snapshot.names[addr]==page.scrollName
+                    for _,binding in ipairs(page.ordered) do
+                        if snapshot.names[binding.wrapperAddr]~=binding.wrapperName then alive=false;break end
+                    end
+                    if not alive then boundScrolls[addr]=nil end
+                end
+                for _,scroll in ipairs(snapshot.scrolls) do
+                    if not allowed() then return end
+                    local addr=Discovery.address(scroll)
+                    if not boundScrolls[addr] then
+                        local rows=Discovery.rowsFromScroll(scroll) or {}
+                        local candidates=candidateProviders(registry,rows)
+                        if #candidates==1 then bindPage(scroll,rows,candidates[1]) end
+                    end
+                end
             end
-            if not alive then boundScrolls[addr]=nil end
+            if next(boundScrolls)==nil then
+                state.attempts=state.attempts+1
+                if state.attempts>=3 then scope:invalidate('no supported page');return end
+            else state.attempts=0 end
         end
-        local keep={}
-        decoratedSliders={}
         for _,instance in ipairs(instances) do
             if not allowed() then return end
-            if refresh(instance,widgets,names) then
+            if refresh(instance,allowed) then
                 local ok,alive=pcall(KeySelector.tick,instance,log)
-                if ok and alive then
-                    keep[#keep+1]=instance
-                    decoratedSliders[Discovery.address(instance.row.slider)]=true
-                elseif not ok then log('SELECTOR_TICK_FAILED',tostring(alive)) end
+                if ok and alive then instance.failed=false
+                elseif not instance.failed then
+                    instance.failed=true
+                    log('SELECTOR_TICK_FAILED',tostring(alive))
+                end
+                -- Keep ownership on failure: the next fresh update can recover.
             end
         end
-        instances=keep
-        for _,scroll in ipairs(scrolls) do
-            if not allowed() then return end
-            local addr=Discovery.address(scroll)
-            if not boundScrolls[addr] then
-                local rows=Discovery.rowsFromScroll(scroll) or {}
-                local candidates=candidateProviders(registry,rows)
-                if #candidates==1 then bindPage(scroll,rows,candidates[1]) end
-            end
-        end
+        -- No UObject access or new work after this generation is revoked.
+        if allowed() then schedule(path,epoch,100) end
     end
-    LoopAsync(100,function()
-        if stopped then return true end
-        local path,epoch,reset=scope:current()
-        if not path then queuedEpoch=nil;return false end
-        if queuedEpoch==epoch then return false end
-        if EngineTickAvailable==false then return false end
-        queuedEpoch=epoch
-        local function work()
-            if queuedEpoch~=epoch then return end
-            if EngineTickAvailable==false or not scope:matches(path,epoch) then queuedEpoch=nil;return end
-            local ok,err=pcall(tick,path,epoch,reset)
-            if queuedEpoch==epoch then queuedEpoch=nil end
-            if not ok then stopped=true; log('DISCOVERY_STOPPED',tostring(err)) end
-        end
-        local ok,err=pcall(function()
-            if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
-            else ExecuteInGameThread(work) end
+    schedule=function(path,epoch,delay)
+        if not scope or not scope:matches(path,epoch) or pending[epoch] then return end
+        pending[epoch]=true
+        ExecuteWithDelay(delay,function()
+            if not scope:matches(path,epoch) then pending[epoch]=nil;return end
+            ExecuteInGameThread(function()
+                pending[epoch]=nil
+                if not scope:matches(path,epoch) then return end
+                if EngineTickAvailable==false then scope:invalidate('engine tick unavailable');return end
+                local ok,err=pcall(tick,path,epoch)
+                if not ok then log('DISCOVERY_FAILED',tostring(err));scope:invalidate('discovery failed') end
+            end,EGameThreadMethod and EGameThreadMethod.EngineTick or nil)
         end)
-        if not ok then queuedEpoch=nil;stopped=true;log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
-        return stopped
+    end
+    local err
+    scope,err=MenuScope.install(log,function(path,epoch)
+        if not path then
+            unhook()
+            for _,owner in pairs(relayOwners) do owner.instance.pendingClicks=0 end
+            return
+        end
+        for _,owner in pairs(relayOwners) do owner.instance.pendingClicks=0 end
+        if not hookEvents() then scope:invalidate('delegate relay hooks unavailable');return end
+        local state=hosts[path]
+        if state then state.ticks=10;state.attempts=0 end
+        schedule(path,epoch,0)
     end)
-    log('DMM_DISCOVERY_READY','activation-scoped exact host lookup; load/deactivate revocation; no global enumeration; strict provider page matching')
+    if not scope then unhook();return false,err end
     return true
 end
 return M

@@ -1,13 +1,13 @@
 -- Lifecycle callbacks retain strings/numbers only, never a UObject for later use.
 local M={}
-function M.install(log)
+function M.install(log,onChange)
     if type(RegisterHook)~='function' then return nil,'RegisterHook unavailable' end
     local scope={enabled=false,epoch=0,path=nil,address=nil,loading=false,reset=0}
     local function revoke(reason,loading)
         scope.epoch=scope.epoch+1
         scope.path=nil;scope.address=nil
         if loading then scope.loading=true;scope.reset=scope.reset+1 end
-        log('MENU_SCOPE_CLOSED',reason..' epoch='..scope.epoch)
+        if onChange then onChange(nil,scope.epoch,scope.reset) end
     end
     local function liveContext(context)
         -- Invoked synchronously inside a native widget function, not a deferred
@@ -29,7 +29,7 @@ function M.install(log)
         if not path then return end
         scope.epoch=scope.epoch+1
         scope.path=path;scope.address=tostring(widget:GetAddress())
-        log('MENU_SCOPE_OPENED','epoch='..scope.epoch..' path='..path)
+        if onChange then onChange(path,scope.epoch,scope.reset) end
     end
     local function removed(context)
         if not scope.enabled or not scope.path then return end
