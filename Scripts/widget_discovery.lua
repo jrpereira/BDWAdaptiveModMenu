@@ -112,41 +112,35 @@ function M.rowsFromScroll(scroll)
     end
     return rows
 end
--- Enumerate current viewport hosts on the game thread. No construction callback
--- wrapper is retained or dereferenced later. Each returned snapshot is local to
--- this callback, including all descendant wrappers and their object names.
-function M.activeTrees()
-    local result={}
-    for _,host in ipairs(FindAllOf('CommonActivatableWidget') or {}) do
-        if valid(host) then
-            local name=host:GetFName():ToString()
-            if name:match('^CommonActivatableWidget_') and host:IsInViewport() and host:IsActivated() then
-                local tree=host.WidgetTree
-                if valid(tree) then
-                    local root=tree.RootWidget
-                    if valid(root) then
-                        local snapshot={widgets={},names={},scrolls={},count=0}
-                        local complete=true
-                        local function walk(widget,depth)
-                            if depth>40 or snapshot.count>=4096 then complete=false; return end
-                            if not valid(widget) then return end
-                            local addr=address(widget)
-                            if not addr or snapshot.widgets[addr] then return end
-                            snapshot.widgets[addr]=widget
-                            snapshot.names[addr]=widget:GetFName():ToString()
-                            snapshot.count=snapshot.count+1
-                            if widget:IsA('/Script/UMG.ScrollBox') then snapshot.scrolls[#snapshot.scrolls+1]=widget end
-                            if widget:IsA('/Script/UMG.PanelWidget') then
-                                for i=0,widget:GetChildrenCount()-1 do walk(widget:GetChildAt(i),depth+1) end
-                            end
-                        end
-                        walk(root,0)
-                        if complete then result[#result+1]=snapshot end
-                    end
-                end
-            end
+-- The exact host was activated through the lifecycle hook. No global object
+-- enumeration is used while idle, during gameplay, or during loading.
+function M.activeTrees(host,allowed)
+    if not allowed() or not valid(host) then return {} end
+    if not host:IsInViewport() or not host:IsActivated() then return {} end
+    if not allowed() then return {} end
+    local tree=host.WidgetTree
+    if not valid(tree) or not allowed() then return {} end
+    local root=tree.RootWidget
+    if not valid(root) then return {} end
+    local snapshot={widgets={},names={},scrolls={},count=0}
+    local complete=true
+    local function walk(widget,depth)
+        if not allowed() then complete=false;return end
+        if depth>40 or snapshot.count>=4096 then complete=false;return end
+        if not valid(widget) then return end
+        local addr=address(widget)
+        if not addr or snapshot.widgets[addr] then return end
+        snapshot.widgets[addr]=widget
+        snapshot.names[addr]=widget:GetFName():ToString()
+        snapshot.count=snapshot.count+1
+        if not allowed() then complete=false;return end
+        if widget:IsA('/Script/UMG.ScrollBox') then snapshot.scrolls[#snapshot.scrolls+1]=widget end
+        if widget:IsA('/Script/UMG.PanelWidget') then
+            for i=0,widget:GetChildrenCount()-1 do walk(widget:GetChildAt(i),depth+1) end
         end
     end
-    return result
+    walk(root,0)
+    if complete and allowed() then return {snapshot} end
+    return {}
 end
 return M
