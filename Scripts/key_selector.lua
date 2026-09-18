@@ -339,6 +339,19 @@ function M.tick(instance,log)
     local okParent,parent=pcall(function() return instance.row.wrapper:GetParent() end)
     if not okParent or not valid(parent) then return false end
 
+    -- Highlight only the paired picker's surface when its hit target is hovered.
+    -- Keep the stock row highlight and key-capture styling independently owned.
+    local pair=instance.pair
+    if pair and valid(pair.button) and valid(pair.inner) then
+        local hovered=pair.button:IsHovered()==true
+        if hovered~=pair.hovered then
+            pair.inner:SetBrushColor(hovered
+                and {R=0.95,G=0.63,B=0.08,A=0.22}
+                or {R=0.12,G=0.12,B=0.12,A=0.10})
+            pair.hovered=hovered
+        end
+    end
+
     local d=instance.descriptor
     local id=d.providerId..'.'..d.settingId
     local normalized=instance.row.slider:GetValue()
