@@ -122,7 +122,8 @@ function M.install(registry,log)
         if not allowed() then return end
         local host=StaticFindObject(path)
         if not allowed() then return end
-        if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated() then
+        if not Discovery.valid(host) or not host:IsInViewport() or not host:IsActivated()
+            or host:IsVisible()~=true or host:GetIsEnabled()~=true then
             scope:invalidate('host inactive');return
         end
         local state=hosts[path]
