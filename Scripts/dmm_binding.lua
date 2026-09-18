@@ -1,5 +1,6 @@
 local Discovery=require('widget_discovery')
 local KeySelector=require('key_selector')
+local MenuScope=require('menu_scope')
 local M={}
 
 local function labelMatches(setting,row)
@@ -25,9 +26,11 @@ end
 
 function M.install(registry,log)
     if not registry.dmmEligible then return false,'DMM direct-folder dependency inactive' end
-    if type(FindAllOf)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
-        return false,'FindAllOf/LoopAsync/ExecuteInGameThread unavailable'
+    if type(StaticFindObject)~='function' or type(LoopAsync)~='function' or type(ExecuteInGameThread)~='function' then
+        return false,'StaticFindObject/LoopAsync/ExecuteInGameThread unavailable'
     end
+    local scope,scopeError=MenuScope.install(log)
+    if not scope then return false,'required menu lifecycle hooks unavailable: '..tostring(scopeError) end
     -- Instance identities are strings/addresses captured while fresh. Replace
     -- every widget used by tick with the current snapshot's wrapper before use.
     local function ledger(instance)
@@ -106,18 +109,31 @@ function M.install(registry,log)
         return true
     end
 
-    local queued,stopped=false,false
-    local function tick()
+    local queuedEpoch,stopped=nil,false
+    local cachedPath,cachedReset=nil,nil
+    local function tick(path,epoch,reset)
+        local function allowed() return scope:matches(path,epoch) end
+        if not allowed() then return end
+        -- Resolve by exact live activation path; never enumerate the UObject array.
+        local host=StaticFindObject(path)
+        if not allowed() then return end
+        if not Discovery.valid(host) then scope:invalidate('host unavailable');return end
+        if cachedPath~=path or cachedReset~=reset then
+            boundScrolls={};decoratedSliders={};instances={}
+            cachedPath=path;cachedReset=reset
+        end
         local widgets,names,scrolls={},{},{}
-        for _,snapshot in ipairs(Discovery.activeTrees()) do
+        for _,snapshot in ipairs(Discovery.activeTrees(host,allowed)) do
             for addr,widget in pairs(snapshot.widgets) do widgets[addr]=widget; names[addr]=snapshot.names[addr] end
             for _,scroll in ipairs(snapshot.scrolls) do scrolls[#scrolls+1]=scroll end
         end
         -- Closed/absent menus provide no current wrappers. Keep only dormant Lua
         -- identities; do not dereference them or redecorate a surviving reopened tree.
-        if next(widgets)==nil then return end
+        if not allowed() then return end
+        if next(widgets)==nil then scope:invalidate('host inactive or tree unavailable');return end
         local recognized=false
         for _,scroll in ipairs(scrolls) do
+            if not allowed() then return end
             local addr=Discovery.address(scroll)
             local page=boundScrolls[addr]
             if page and names[addr]==page.scrollName then recognized=true;break end
@@ -135,6 +151,7 @@ function M.install(registry,log)
         local keep={}
         decoratedSliders={}
         for _,instance in ipairs(instances) do
+            if not allowed() then return end
             if refresh(instance,widgets,names) then
                 local ok,alive=pcall(KeySelector.tick,instance,log)
                 if ok and alive then
@@ -145,6 +162,7 @@ function M.install(registry,log)
         end
         instances=keep
         for _,scroll in ipairs(scrolls) do
+            if not allowed() then return end
             local addr=Discovery.address(scroll)
             if not boundScrolls[addr] then
                 local rows=Discovery.rowsFromScroll(scroll) or {}
@@ -155,23 +173,26 @@ function M.install(registry,log)
     end
     LoopAsync(100,function()
         if stopped then return true end
-        if queued then return false end
+        local path,epoch,reset=scope:current()
+        if not path then queuedEpoch=nil;return false end
+        if queuedEpoch==epoch then return false end
         if EngineTickAvailable==false then return false end
-        queued=true
+        queuedEpoch=epoch
         local function work()
-            if EngineTickAvailable==false then queued=false;return end
-            local ok,err=pcall(tick)
-            queued=false
+            if queuedEpoch~=epoch then return end
+            if EngineTickAvailable==false or not scope:matches(path,epoch) then queuedEpoch=nil;return end
+            local ok,err=pcall(tick,path,epoch,reset)
+            if queuedEpoch==epoch then queuedEpoch=nil end
             if not ok then stopped=true; log('DISCOVERY_STOPPED',tostring(err)) end
         end
         local ok,err=pcall(function()
             if EGameThreadMethod and EGameThreadMethod.EngineTick then ExecuteInGameThread(work,EGameThreadMethod.EngineTick)
             else ExecuteInGameThread(work) end
         end)
-        if not ok then queued=false;stopped=true;log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
+        if not ok then queuedEpoch=nil;stopped=true;log('GAME_THREAD_DISPATCH_FAILED',tostring(err)) end
         return stopped
     end)
-    log('DMM_DISCOVERY_READY','fresh active host trees; no Slider notifications; live identity refresh; strict provider page matching')
+    log('DMM_DISCOVERY_READY','activation-scoped exact host lookup; load/deactivate revocation; no global enumeration; strict provider page matching')
     return true
 end
 return M
