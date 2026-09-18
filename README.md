@@ -43,7 +43,7 @@ Pushes and pull requests compile Lua, run mocked regression tests and package ch
 and upload a ZIP plus SHA-256 checksum as the `mod-package` Actions artifact.
 These tests do not run Unreal or certify in-game input, rendering, or persistence.
 
-To publish a release, update the Lua VERSION (and ExtendedControls metadata when
+To publish a release, update the Lua VERSION (and QuickslotsForever metadata when
 applicable), commit, and push a branch named `release/vMAJOR.MINOR.PATCH`.
 The release workflow reruns the checks, rejects a version mismatch, and publishes
 the archive and checksum at that exact commit. An existing release/tag is not
@@ -56,6 +56,6 @@ and workspace notes are excluded. No game files or Dawnwalker Mod Menu source ar
 
 ## Related projects
 
-- [ExtendedControls](https://github.com/jrpereira/BDWExtendedControls)
+- [QuickslotsForever](https://github.com/jrpereira/BDWQuickslotsForever)
 - [ModMenuDecorator](https://github.com/jrpereira/BDWModMenuDecorator)
 - [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge)
