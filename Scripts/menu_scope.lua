@@ -5,7 +5,7 @@ function M.install(log,onChange)
     local scope={enabled=false,epoch=0,path=nil,address=nil,loading=false,reset=0}
     local function revoke(reason,loading)
         scope.epoch=scope.epoch+1
-        scope.path=nil;scope.address=nil
+        scope.path=nil;scope.address=nil;scope.treeAddress=nil
         if loading then scope.loading=true;scope.reset=scope.reset+1 end
         if onChange then onChange(nil,scope.epoch,scope.reset) end
     end
@@ -29,7 +29,17 @@ function M.install(log,onChange)
         if not path then return end
         scope.epoch=scope.epoch+1
         scope.path=path;scope.address=tostring(widget:GetAddress())
+        scope.treeAddress=tostring(widget.WidgetTree:GetAddress())
         if onChange then onChange(path,scope.epoch,scope.reset) end
+    end
+    local function pageChanged(context)
+        if not scope.enabled or scope.loading or not scope.path then return end
+        -- DMM constructs its switchers directly under the active host's WidgetTree.
+        -- The callback context and its outer are synchronous fresh wrappers.
+        local tree=liveContext(context):GetOuter()
+        if tostring(tree:GetAddress())~=scope.treeAddress then return end
+        scope.epoch=scope.epoch+1
+        if onChange then onChange(scope.path,scope.epoch,scope.reset) end
     end
     local function removed(context)
         if not scope.enabled or not scope.path then return end
@@ -61,6 +71,7 @@ function M.install(log,onChange)
         {'/Script/DogwoodUI.SaveWindowBase:RequestLoadSave',protect(load),noop},
         {'/Script/DogwoodUI.DWLoadingScreenWidget:NotifyLoadingScreenStarted',protect(load),noop},
         {'/Script/DogwoodUI.UIFrontend:ShowPauseMenu',noop,protect(rearm)},
+        {'/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex',noop,protect(pageChanged)},
     }
     local registered={}
     for _,spec in ipairs(specs) do
@@ -79,6 +90,11 @@ function M.install(log,onChange)
     end
     function scope:matches(path,epoch)
         return self.enabled and not self.loading and self.path==path and self.epoch==epoch
+    end
+    function scope:dormant()
+        -- Retain the host identity for a later page event; retire all queued work.
+        self.epoch=self.epoch+1
+        if onChange then onChange(nil,self.epoch,self.reset) end
     end
     function scope:invalidate(reason)
         if self.path then revoke(reason,false) end

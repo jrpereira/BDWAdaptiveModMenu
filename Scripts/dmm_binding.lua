@@ -166,7 +166,7 @@ function M.install(registry,log)
             end
             if next(boundScrolls)==nil then
                 state.attempts=state.attempts+1
-                if state.attempts>=3 then scope:invalidate('no supported page');return end
+                if state.attempts>=3 then scope:dormant();return end
             else state.attempts=0 end
         end
         for _,instance in ipairs(instances) do
