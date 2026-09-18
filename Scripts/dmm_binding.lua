@@ -1,6 +1,7 @@
 local Discovery=require('widget_discovery')
 local KeySelector=require('key_selector')
 local MenuScope=require('menu_scope')
+local ClickDelivery=require('click_delivery')
 local M={}
 
 local function labelMatches(setting,row)
@@ -29,6 +30,7 @@ function M.install(registry,log)
     for _,api in ipairs({'StaticFindObject','ExecuteWithDelay','ExecuteInGameThread'}) do
         if type(_G[api])~='function' then return false,api..' unavailable' end
     end
+    local clicks=ClickDelivery.new(log)
     local scope,schedule
     local hosts={}
     local boundScrolls,decoratedSliders,instances
@@ -89,7 +91,7 @@ function M.install(registry,log)
                             if descriptor.modeId then
                                 local modeBinding=page.rowsById[descriptor.modeId]
                                 if modeBinding and modeBinding.kind=='picker' then
-                                    local callOk,pairOk,pairErr=pcall(KeySelector.mergePair,instanceOrErr,modeBinding.row,log)
+                                    local callOk,pairOk,pairErr=pcall(KeySelector.mergePair,instanceOrErr,modeBinding.row,log,clicks)
                                     if not callOk then
                                         log('PAIR_EXCEPTION',provider.id..'.'..binding.settingId..': '..tostring(pairOk))
                                     elseif not pairOk then
@@ -102,6 +104,7 @@ function M.install(registry,log)
                             local recorded,recordError=pcall(ledger,instanceOrErr)
                             if not recorded then
                                 instanceOrErr.disabled=true
+                                clicks:forget(instanceOrErr)
                                 pcall(KeySelector.restore,instanceOrErr,function() return true end)
                                 instanceOrErr.liveRefs={}
                                 log('DECORATE_FAILED',tostring(recordError))
@@ -146,6 +149,7 @@ function M.install(registry,log)
                         for _,ref in ipairs(instance.liveRefs) do
                             if ref.key=='slider' then decoratedSliders[ref.address]=nil end
                         end
+                        clicks:forget(instance)
                         table.remove(instances,i)
                     end
                 end
@@ -191,6 +195,7 @@ function M.install(registry,log)
                     if instance.failures==1 then log('SELECTOR_TICK_FAILED','temporarily unavailable') end
                     if instance.failures>=3 and allowed() then
                         instance.disabled=true
+                        clicks:forget(instance)
                         local restored,result=pcall(KeySelector.restore,instance,allowed)
                         if not restored or not result then log('RESTORE_FAILED','control recovery incomplete') end
                     end
@@ -238,7 +243,9 @@ function M.install(registry,log)
     end
     local err
     scope,err=MenuScope.install(log,function(path,epoch)
-        if not path then return end
+        if not path then clicks:close();return end
+        local clickOK,clickError=clicks:open(path,epoch)
+        if not clickOK then log('CLICK_HOOK_FAILED',tostring(clickError)) end
         local state=hosts[path]
         if state then
             state.scanDue=true;state.attempts=0
