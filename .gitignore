@@ -2,6 +2,11 @@
 /config.ini
 /artifacts/
 /work/
+diagnostics/
+evidence/
+/tools/runtime_evidence.py
+/tests/test_runtime_evidence.py
+/docs/RECONSTRUCTED_HISTORY.json
 __pycache__/
 *.pyc
 *.log

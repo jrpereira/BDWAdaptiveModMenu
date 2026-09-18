@@ -13,6 +13,10 @@ notes in COORDINATOR's separate local records area, outside all three repositori
 Never publish that records area as a release asset. Local storage is separate,
 not encrypted or automatically backed up.
 
+Runtime inspection adapters, collected evidence, diagnostic fixtures and history
+evidence manifests also belong in private tooling, outside public Git history.
+Keep production runtime code, ordinary tests, release manifests and checksums.
+
 Public `docs/` should contain maintained user/developer guidance, API contracts,
 build instructions and design explanations needed by users or contributors.
 Review and sanitize an internal finding before turning it into public documentation.
