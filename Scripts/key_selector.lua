@@ -55,6 +55,37 @@ local function setText(widget,text)
     return result
 end
 
+-- The collapsed child is the row's persistent state. No Lua row registry owns it.
+local markerPrefix='MMD_ROW_1\n'
+local stateKeys={'initialized','lastName','lastBackingName','wasSelecting','captureName',
+    'keyHovered','labelDirty','readWarning','pairIndex','pairHovered','pairLastText'}
+local function encode(value)
+    if value==nil then return '-' end
+    if type(value)=='boolean' then return value and 't' or 'f' end
+    return 's'..tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
+end
+local function decode(value)
+    if value=='-' then return nil end
+    if value=='t' then return true end
+    if value=='f' then return false end
+    assert(value:sub(1,1)=='s','invalid row state')
+    return (value:sub(2):gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end))
+end
+function M.save(instance)
+    if not instance.stateWidget then return end -- Standalone control test adapters.
+    if instance.pair then
+        instance.pairHovered=instance.pair.hovered
+        instance.pairLastText=instance.pair.lastText
+    end
+    local fields={}
+    for i,key in ipairs(stateKeys) do fields[i]=encode(instance[key]) end
+    local text=markerPrefix..table.concat(fields,'\n')..'\n'
+    if text~=instance.stateText then
+        assert(setText(instance.stateWidget,text),'row state write failed')
+        instance.stateText=text
+    end
+end
+
 local function dirtyText(widget)
     local text=Discovery.textOf(widget) or ''
     return text:match('%s%*%s*$')~=nil,text
@@ -156,11 +187,16 @@ function M.decorate(row,descriptor,log)
         row.labelBox:SetWidthOverride(488); row.surfaceBox:SetWidthOverride(96); row.valueBox:SetWidthOverride(0)
     end
 
-    return {
-        descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
+    local stateWidget=construct('/Script/UMG.TextBlock',tree)
+    stateWidget:SetVisibility(1)
+    need(keyOverlay:AddChildToOverlay(stateWidget),'row state slot')
+    local instance={
+        stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
         pair=nil,labelDirty=nil,
     }
+    M.save(instance)
+    return instance
 end
 
 function M.mergePair(instance,modeRow,log,clicks)
@@ -214,6 +250,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     -- Primary row becomes label | key+pair. The stock value box stays alive at width zero.
     instance.row.surfaceBox:SetWidthOverride(254)
     instance.row.valueBox:SetWidthOverride(0)
+    local pairIndex=Discovery.childCount(instance.row.surface)
     local slot=need(instance.row.surface:AddChildToOverlay(pairBox),'pair proxy overlay slot')
     slot:SetHorizontalAlignment(3); slot:SetVerticalAlignment(2)
 
@@ -246,8 +283,49 @@ function M.mergePair(instance,modeRow,log,clicks)
 
     -- Collapse only the source wrapper after the proxy exists. No child is removed/reparented.
     local okCollapse,collapseErr=pcall(function() modeRow.wrapper:SetVisibility(1) end)
-    if not okCollapse then log('PAIR_COLLAPSE_FAILED',id..': '..tostring(collapseErr)) end
+    if not okCollapse then error('pair collapse failed: '..tostring(collapseErr),0) end
+    instance.pairIndex=pairIndex
+    M.save(instance)
     return true
+end
+
+-- Called only after page readiness. Existing children are the authority for
+-- decoration presence; runtime bindings can be discarded at every scope change.
+function M.adopt(row,descriptor,modeRow,clicks)
+    for i=0,Discovery.childCount(row.surface)-1 do
+        local box=Discovery.childAt(row.surface,i)
+        local overlay=Discovery.contentOf(box)
+        local marker=overlay and Discovery.childAt(overlay,6)
+        local text=marker and Discovery.textOf(marker)
+        if text and text:sub(1,#markerPrefix)==markerPrefix then
+            local frame=Discovery.childAt(overlay,0)
+            local inner=Discovery.contentOf(frame)
+            local instance={descriptor=descriptor,row=row,keyBox=box,keyFrame=frame,
+                keyInner=inner,keyText=Discovery.contentOf(inner),selector=Discovery.childAt(overlay,5),
+                stateWidget=marker,stateText=text,keyEdges={},baseLabel=stripDirtySuffix(row.label)}
+            local n=0
+            for field in text:sub(#markerPrefix+1):gmatch('(.-)\n') do
+                n=n+1
+                if stateKeys[n] then instance[stateKeys[n]]=decode(field) end
+            end
+            assert(n==#stateKeys,'incompatible row state')
+            for edge=1,4 do instance.keyEdges[edge]=Discovery.contentOf(Discovery.childAt(overlay,edge)) end
+            if instance.pairIndex then
+                assert(modeRow,'paired row unavailable')
+                local pairBox=Discovery.childAt(row.surface,assert(tonumber(instance.pairIndex)))
+                local pairOverlay=Discovery.contentOf(pairBox)
+                local pairFrame=Discovery.childAt(pairOverlay,0)
+                local pairInner=Discovery.contentOf(pairFrame)
+                instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
+                    button=Discovery.childAt(pairOverlay,1),text=Discovery.contentOf(pairInner),
+                    valueWidget=modeRow.valueWidget,nav=modeRow.nav,
+                    count=math.max(1,#(descriptor.modeOptions or {})),
+                    hovered=instance.pairHovered,lastText=instance.pairLastText}
+                clicks:attach(instance,instance.pair.button,true)
+            end
+            return instance
+        end
+    end
 end
 
 local function updateDirtyPresentation(instance)
@@ -392,6 +470,13 @@ function M.tick(instance,log)
     return true
 end
 
+local tick=M.tick
+function M.tick(instance,log)
+    local result=tick(instance,log)
+    M.save(instance)
+    return result
+end
+
 local function identity(widget)
     local full=widget:GetFullName()
     return {path=assert(full:match('^%S+ (.+)$')),full=full,address=Discovery.address(widget)}
@@ -451,11 +536,13 @@ local function transactional(fn,rowOf,isPair)
             receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
         end
         if ok and result then
-            if isPair then args[1].pairUndo=receipt else result.undo=receipt end
+            if isPair then
+                args[1].pairUndo=receipt
+            else result.undo=receipt end
             return result,err
         end
         undo(receipt,function() return true end)
-        if isPair then args[1].pair=nil end
+        if isPair then args[1].pair=nil;args[1].pairIndex=nil end
         return nil,ok and err or result
     end
 end

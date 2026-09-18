@@ -33,12 +33,12 @@ function M.new(log)
         self.hook={pre,post}
         return true
     end
-    function self:attach(instance,button)
+    function self:attach(instance,button,existing)
         assert(self.path and self.hook,'click hook unavailable')
         local address=tostring(button:GetAddress())
         local full=button:GetFullName()
         -- Add only to our newly constructed button. Never touch DMM delegates.
-        button.OnClicked:Add(button,FName('ForceLayoutPrepass'))
+        if not existing then button.OnClicked:Add(button,FName('ForceLayoutPrepass')) end
         self.owners[address]={instance=instance,path=self.path,full=full}
     end
     function self:retire(path)
