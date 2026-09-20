@@ -39,3 +39,9 @@ jobs:
           name: mod-package
           path: dist/*
           if-no-files-found: error
+  lua-and-package:
+    needs: [lua, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm Lua and package checks
+        run: echo "Lua and package checks passed"
