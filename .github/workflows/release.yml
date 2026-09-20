@@ -47,4 +47,4 @@ jobs:
           flags=()
           if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 "${flags[@]}" \
-            --target "$GITHUB_SHA" --title "ModMenuDecorator $RELEASE_TAG" --generate-notes
+            --target "$GITHUB_SHA" --title "AdaptiveModMenu $RELEASE_TAG" --generate-notes

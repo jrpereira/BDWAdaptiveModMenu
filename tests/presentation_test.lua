@@ -49,18 +49,13 @@ Id=KeyMode
 DecoType=keybind
 ]]
 M.parse(schema,items)
-assert(items[1].mmdTabs and items[1].mmdFont==2)
-assert(items[2].mmdLabelRule.values[0]=='Slot 5')
-assert(items[2].mmdGroup.parent==items[3].mmdGroup.parent,'Shared parent labels must share one descriptor')
-assert(items[2].mmdGroup.parent.label=='Interaction: Independent' and items[2].mmdGroup.parent.font==2)
-assert(items[5].mmdGroup.parent.label=='Interaction: Selective')
-local legacy=schema:gsub('DecoType=tab','Decoration=tabs'):gsub('DecoLevel=(%d)','DecorationFont=Level%1'):gsub('DecoLevel=1','DecorationFont=Level1')
-for _,suffix in ipairs({'Help','LabelWhen','Labels','OrderWhen','Orders'}) do legacy=legacy:gsub('Deco'..suffix,'Decoration'..suffix) end
-M.parse(legacy,items);assert(items[1].mmdTabs and items[1].mmdFont==2 and items[4].mmdHeader)
-M.parse(schema:gsub('DecoType=tab','Decoration=keybind\nDecoType=tab'):gsub('DecoLevel=2','DecorationFont=Level6\nDecoLevel=2'),items)
-assert(items[1].mmdTabs and items[1].mmdFont==2,'Canonical metadata overrides legacy aliases')
-M.parse(schema:gsub('DecoLevel=2','DecoFont=6\nDecoLevel=2'),items)
-assert(items[1].mmdFont==2,'DecoLevel overrides transitional DecoFont')
+assert(items[1].ammTabs and items[1].ammFont==2)
+assert(items[2].ammLabelRule.values[0]=='Slot 5')
+assert(items[2].ammGroup.parent==items[3].ammGroup.parent,'Shared parent labels must share one descriptor')
+assert(items[2].ammGroup.parent.label=='Interaction: Independent' and items[2].ammGroup.parent.font==2)
+assert(items[5].ammGroup.parent.label=='Interaction: Selective')
+M.parse(schema:gsub('DecoType=tab','Decoration=tabs'):gsub('DecoLevel=2','DecorationFont=Level2'),items)
+assert(not items[1].ammTabs and items[1].ammFont==nil,'noncanonical metadata must be ignored')
 assert(not pcall(M.parse,schema:gsub('DecoType=tab','DecoType=tabs'),items))
 assert(not pcall(M.parse,schema:gsub('DecoLevel=1','DecoLevel=9'),items))
 M.parse(schema,items)
@@ -147,13 +142,13 @@ local controls={build=function(tree,providers,a)
 end}
 assert(M.install(choices,controls));assert(not M.install(choices,controls))
 local ui=controls.build(widget(),{{choices=items}},api)
-ui.mmdHeaderHost=widget()
+ui.ammHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
-assert(#row.mmdTabs==2 and row.mmdLabel.Font.Size==16)
-assert(row.mmdTabs[1].selected and not row.mmdTabs[2].selected)
-assert(ui.panels[1].rows[5].mmdModeState.text=='MMD_MODE\nfixed')
-assert(ui.panels[1].rows[2].mmdLabel.text=='Slot 5')
+assert(#row.ammTabs==2 and row.ammLabel.Font.Size==16)
+assert(row.ammTabs[1].selected and not row.ammTabs[2].selected)
+assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\nfixed')
+assert(ui.panels[1].rows[2].ammLabel.text=='Slot 5')
 local scroll=ui.panels[1].scroll
 local function position(target)
     for n,child in ipairs(scroll.children) do if child==target then return n end end
@@ -167,13 +162,13 @@ for _,child in ipairs(scroll.children) do if child.text=='Interaction: Independe
 assert(position(independent)<position(ui.panels[1].headings[3].widget),'Parent must precede its subgroup headings')
 assert(position(ui.panels[1].headings[3].widget)<position(ui.panels[1].headings[2].widget),'Primary category must precede secondary')
 local count=scroll:GetChildrenCount()
-row.mmdTabs[2].widget.clicked=true
+row.ammTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[1]==1 and row.mmdTabs[2].selected)
-assert(ui.panels[1].rows[5].mmdModeState.text=='MMD_MODE\neditable')
+assert(ui.model.pending[1]==1 and row.ammTabs[2].selected)
+assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\neditable')
 ui.panels[1].rows[6].wrapper:SetVisibility(1);ui:refresh()
-assert(ui.panels[1].rows[5].mmdModeState.text=='MMD_MODE\neditable','Backing wrapper collapse must not determine logical editability')
-assert(ui.panels[1].rows[2].mmdLabel.text=='Slot 1')
+assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\neditable','Backing wrapper collapse must not determine logical editability')
+assert(ui.panels[1].rows[2].ammLabel.text=='Slot 1')
 assert(position(independent)<position(ui.panels[1].headings[2].widget))
 assert(position(ui.panels[1].headings[2].widget)<position(ui.panels[1].headings[3].widget))
 assert(ui.root.readyEvents==1,'Reordering must notify existing decorators that row paths changed')
@@ -181,10 +176,10 @@ ui:refresh();ui:prepare(1);assert(scroll:GetChildrenCount()==count,'No duplicate
 assert(textCount('Interaction: Independent')==1 and textCount('Interaction: Selective')==1,'Reuse must not duplicate parent headings')
 assert(ui.root.readyEvents==1,'Unchanged refresh must not repeat page events')
 local header=ui.panels[1].rows[4]
-assert(header.mmdHeader and header.wrapper:GetParent()==ui.mmdHeaderHost)
-assert(header.mmdPlaceholder.visible==1 and header.mmdLabel.Font.Size==22)
+assert(header.ammHeader and header.wrapper:GetParent()==ui.ammHeaderHost)
+assert(header.ammPlaceholder.visible==1 and header.ammLabel.Font.Size==22)
 ui.model:set(1,0);ui:refresh()
-assert(ui.panels[1].rows[5].mmdModeState.text=='MMD_MODE\nfixed' and ui.model.pending[6]==1,'Hidden mode preserves saved Hold')
+assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\nfixed' and ui.model.pending[6]==1,'Hidden mode preserves saved Hold')
 assert(ui.root.readyEvents==2,'Visibility and ordering changes must coalesce into one page-ready event')
 ui.model.visibilityOverride=true
 function ui.model:visibility() return {true,true,true,true,true,self.visibilityOverride} end

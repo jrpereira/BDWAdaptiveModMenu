@@ -71,7 +71,7 @@ fails(function() merge(nil,schema:gsub('0:1;1:2','0:1;0:2')) end,'duplicate Defa
 fails(function() merge(nil,schema:gsub('Target=Position','Target=Missing')) end,'unknown DefaultRule target')
 fails(function() merge(nil,schema..'[DefaultRule.PositionAlias]\nTarget=Position\n') end,'duplicate DefaultRule')
 
--- Exercise the owned open adapter including failure recovery and unaffected providers.
+-- Exercise the owned open adapter including failure recovery and ordinary providers.
 local files={['Mod/mod_settings.ini']=schema,['Mod/config.ini']='[General]\nOldCount=0\n'}
 local writes,failWrite=0,false
 local fs={read=function(p) return files[p] end,
@@ -82,7 +82,8 @@ choices.fs=fs
 choices.parse=function() return settings() end
 choices.open=function(provider)
     local m={}
-    local text=choices.fs.read('Mod/config.ini') or ''
+    local base=assert(provider.path:match('^(.*)[/\\][^/\\]+$'))
+    local text=choices.fs.read(base..'/config.ini') or ''
     m.value=tonumber(text:match('\nCount=(%d+)')) or 2
     function m:set(v) if not self.error then self.value=v end end
     function m:apply() if self.error then return false,self.error end;return true end
@@ -95,7 +96,7 @@ assert(not model.error and model.value==1 and model:apply() and writes==1)
 assert(not choices.open(provider).error and writes==1)
 files['Mod/config.ini']='[General]\nOldCount=7\n'
 model=choices.open(provider)
-assert(model.error:find('Configuration migration failed',1,true) and not model:apply())
+assert(model.error:find('Configuration initialization failed',1,true) and not model:apply())
 model:set(1);assert(model.value==2 and writes==1)
 files['Mod/config.ini']='[General]\nOldCount=0\n';failWrite=true
 model=choices.open(provider);assert(model.error and not model:apply())
@@ -104,6 +105,10 @@ failWrite=false;assert(not choices.open(provider).error,'failed attempt must not
 files['Mod/mod_settings.ini']='[Setting.Count]\nId=Count\nDefaultFromMap=0:1\n'
 provider.choices=choices.parse(files['Mod/mod_settings.ini'])
 model=choices.open(provider);assert(model.error and not model:apply(),'malformed map-only declaration must fail closed')
-local unrelated={path='Missing/metadata.ini',choices=choices.parse('[Setting.Unrelated]')}
-assert(not choices.open(unrelated).error,'unrelated provider must not run migration')
+files['Missing/metadata.ini']='[Setting.Unrelated]\n'
+local before=writes
+local unrelated={path='Missing/metadata.ini',choices=choices.parse(files['Missing/metadata.ini'])}
+local unrelatedModel=choices.open(unrelated)
+assert(not unrelatedModel.error,'ordinary provider initialization failed: '..tostring(unrelatedModel.error))
+assert(writes==before+1 and files['Missing/config.ini'],'ordinary provider config was not created')
 print('PASS declarative original-snapshot migration matrix, precedence, invalid inputs, idempotence and fail-closed provider recovery')

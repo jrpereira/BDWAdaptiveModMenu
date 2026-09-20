@@ -101,18 +101,13 @@ end
 local count=#key.shell.children
 controller:bind(all,routes,{[key]=mode})
 assert(#key.shell.children==count,'rebinding must reuse the star')
--- Suppression is captured at mutation, before DMM produces its text signal.
-assert(controller:setShowDirty(false)==true)
-assert(controller:setValue('Example','Ability',49))
-assert(controller:setValue('Example','Mode',1))
-assert(controller:setShowDirty(true)==false)
 local previousFonts=key.labelWidget.fontWrites
-changed(key,'49 *')
+changed(key,'49') -- DMM's mapped-preset wrapper suppresses its own dirty suffix.
 assert(key.labelWidget.fontWrites==previousFonts,'suppressed preset changes must not restyle unchanged labels')
-changed(mode,'Hold *')
+changed(mode,'Hold')
 assert(key.labelWidget.text=='Ability' and mode.labelWidget.text=='Mode')
 assert(key.labelWidget.Font.TypefaceFontName=='Regular')
-changed(key,'49 *') -- A repeated refresh must not reveal it.
+changed(key,'49') -- A repeated refresh must not invent dirty state.
 assert(key.labelWidget.text=='Ability')
 changed(key,'50 *') -- A new manual edit is visible.
 assert(key.labelWidget.text=='Ability' and star(key).visibility==4)

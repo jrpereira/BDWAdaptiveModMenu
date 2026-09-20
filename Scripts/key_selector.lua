@@ -31,12 +31,22 @@ local function keyNameFromChord(chord)
     if ok and name and name~='' then return name end
 end
 
+local modifierKeys={LeftShift=true,RightShift=true,LeftControl=true,RightControl=true,
+    LeftAlt=true,RightAlt=true,LeftCommand=true,RightCommand=true}
+local function hasChordModifier(chord)
+    for _,field in ipairs({'bShift','bCtrl','bAlt','bCmd'}) do
+        local ok,value=pcall(function() return chord[field] end)
+        if ok and (value==true or value==1) then return true end
+    end
+    return false
+end
+
 local function selectedName(selector)
     local ok,chord=pcall(function() return selector.SelectedKey end)
     if not ok then return nil,tostring(chord) end
     local name=keyNameFromChord(chord)
     if not name then return nil,'SelectedKey did not contain a readable FKey name' end
-    return name
+    return name,nil,hasChordModifier(chord) and not modifierKeys[name]
 end
 
 local textLib=nil
@@ -56,9 +66,9 @@ local function setText(widget,text)
 end
 
 -- The collapsed child is the row's persistent state. No Lua row registry owns it.
-local markerPrefix='MMD_ROW_1\n'
+local markerPrefix='AMM_ROW_1\n'
 local stateKeys={'initialized','lastName','lastBackingName','wasSelecting','captureName',
-    'keyHovered','labelDirty','readWarning','pairIndex','pairHovered','pairLastText'}
+    'keyHovered','readWarning','pairIndex','pairHovered','pairLastText'}
 local function encode(value)
     if value==nil then return '-' end
     if type(value)=='boolean' then return value and 't' or 'f' end
@@ -102,7 +112,9 @@ local function stripDirtySuffix(text)
 end
 
 local function displayName(name)
-    local aliases={None='Unbound',SpaceBar='Space',BackSpace='Backspace',ThumbMouseButton='Mouse 4',ThumbMouseButton2='Mouse 5',LeftMouseButton='LMB',RightMouseButton='RMB',MiddleMouseButton='MMB'}
+    local aliases={None='Unbound',SpaceBar='Space',BackSpace='Backspace',ThumbMouseButton='Mouse 4',ThumbMouseButton2='Mouse 5',LeftMouseButton='LMB',RightMouseButton='RMB',MiddleMouseButton='MMB',
+        LeftShift='Left Shift',RightShift='Right Shift',LeftControl='Left Ctrl',RightControl='Right Ctrl',
+        LeftAlt='Left Alt',RightAlt='Right Alt',LeftCommand='Left Win',RightCommand='Right Win'}
     return aliases[name] or name or ''
 end
 
@@ -169,7 +181,7 @@ function M.decorate(row,descriptor,log)
     textSlot:SetPadding({Left=4,Top=0,Right=4,Bottom=0})
 
     local selector=construct('/Script/UMG.InputKeySelector',tree)
-    selector:SetAllowGamepadKeys(false); selector:SetAllowModifierKeys(false)
+    selector:SetAllowGamepadKeys(false); selector:SetAllowModifierKeys(true)
     selector:SetEscapeKeys({{KeyName=FName('Escape')}})
     selector:SetRenderOpacity(0.0)
     local ss=need(keyOverlay:AddChildToOverlay(selector),'selector slot')
@@ -209,7 +221,7 @@ function M.decorate(row,descriptor,log)
     local instance={
         stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
-        pair=nil,labelDirty=nil,
+        pair=nil,
     }
     M.save(instance)
     return instance
@@ -222,7 +234,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     local id=instance.descriptor.providerId..'.'..instance.descriptor.settingId
 
     -- Keep the stock picker row and every stock child UObject in place. Build the visible
-    -- proxy from widgets whose composition paths are already proven elsewhere in MMD:
+    -- proxy from widgets whose composition paths are already proven elsewhere in AMM:
     -- SizeBox -> Overlay -> Border -> TextBlock, plus a transparent sibling Button used
     -- only as a hit target. Keep text in the sibling border composition.
     local pairBox=construct('/Script/UMG.SizeBox',tree)
@@ -371,8 +383,8 @@ function M.tick(instance,log)
     if instance.descriptor.fixedMode and instance.pair then
         if not valid(instance.row.modeState) then instance.pendingClicks=0;return false end
         local state=Discovery.textOf(instance.row.modeState)
-        if state~='MMD_MODE\nfixed' and state~='MMD_MODE\neditable' then instance.pendingClicks=0;return false end
-        local editable=state=='MMD_MODE\neditable'
+        if state~='AMM_MODE\nfixed' and state~='AMM_MODE\neditable' then instance.pendingClicks=0;return false end
+        local editable=state=='AMM_MODE\neditable'
         if instance.modeEditable~=editable then
             instance.pendingClicks=0
             instance.pair.button:SetIsEnabled(editable)
@@ -415,7 +427,7 @@ function M.tick(instance,log)
     -- Presentation follows the current backing value, including unsupported codes.
     -- Keep its successful-write cache separate from accepted input state.
     instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
-    local name,readError=selectedName(instance.selector)
+    local name,readError,hasModifiers=selectedName(instance.selector)
     if not name then
         if not instance.readWarning then log('SELECTED_KEY_READ_FAILED',id..' '..tostring(readError)); instance.readWarning=true end
         return false
@@ -457,7 +469,11 @@ function M.tick(instance,log)
         return true
     end
 
-    if name~=instance.lastName then
+    if hasModifiers then
+        log('UNSUPPORTED_KEY_CHORD',id..' modifier chords are not supported')
+        syncSelector(instance,backingName)
+        instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+    elseif name~=instance.lastName then
         local keyValue=Codes.toValue(name)
         if keyValue==nil or keyValue<d.minimum or keyValue>d.maximum then
             log('UNSUPPORTED_KEY',id..' '..name)

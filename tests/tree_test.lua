@@ -91,7 +91,7 @@ print('PASS nested switchers traverse only selected page; paired backing control
 local originalRow=M.rowFromWrapper
 local function marked(index)
  local marker=widget('Marker'..index,'TextBlock')
- function marker:GetText() return 'MMD_SETTING_INDEX\n'..index end
+ function marker:GetText() return table.concat({'AMM_SETTING_2',tostring(index),'Provider','Row'..index,'slider','0','254','1','0','','','0','','','0'},'\n') end
  local shell=widget('Shell'..index,'Overlay',{marker})
  local wrapper=widget('Wrapper'..index,'SizeBox')
  function wrapper:GetContent() return shell end
@@ -103,7 +103,7 @@ M.rowFromWrapper=function(w) return w.row end
 local ordered=M.rowsFromScroll(widget('Ordered','ScrollBox',{second,first}))
 assert(ordered[1]==second.row and ordered[2]==first.row)
 local placeholderText=widget('HeaderIdentity','TextBlock')
-function placeholderText:GetText() return 'MMD_HEADER_ROW\nOwned.Header' end
+function placeholderText:GetText() return 'AMM_HEADER_ROW\nOwned.Header' end
 local placeholder=widget('Placeholder','SizeBox')
 function placeholder:GetContent() return placeholderText end
 local originalFind=StaticFindObject
@@ -112,9 +112,11 @@ ordered=M.rowsFromScroll(widget('Promoted','ScrollBox',{placeholder,second}))
 assert(ordered[1]==first.row and ordered[2]==second.row,'Promoted headers retain schema identity')
 StaticFindObject=originalFind
 local modern=M.childAt(first:GetContent(),0)
-function modern:GetText() return 'MMD_SETTING_INDEX\n1\nProvider%25Name\nPrimaryX' end
+function modern:GetText() return table.concat({'AMM_SETTING_2','1','Provider%25Name','PrimaryX','slider','0','254','1','0','','','1','','PrimaryXMode','0'},'\n') end
 ordered=M.rowsFromScroll(widget('Grouped','ScrollBox',{second,first}))
 assert(ordered[2].identityProviderId=='Provider%Name' and ordered[2].settingId=='PrimaryX')
 assert(ordered[2].settingIndex==1,'DMM index is informational; visual order is retained')
+assert(ordered[2].dmmSetting.ammKeybind and ordered[2].dmmSetting.minimum==0
+ and ordered[2].dmmSetting.maximum==254 and ordered[2].dmmSetting.ammPairId=='PrimaryXMode')
 M.rowFromWrapper=originalRow
 print('PASS category reordering preserves schema row identity')

@@ -50,7 +50,7 @@ assert(Config.commit(plan,fs));assert(files['config.ini']==complete and fs.write
 assert(not Config.commit({path=plan.path,original=complete,content=complete},fs) and fs.writes==1)
 fs,files=memory({['config.ini']=partial})
 plan.original=partial
-assert(Config.commit(plan,fs));assert(files['config.ini']==complete and not files['config.ini.mmd-init.bak'])
+assert(Config.commit(plan,fs));assert(files['config.ini']==complete and not files['config.ini.amm-init.bak'])
 for _,phase in ipairs({'write','verify','backup','install'}) do
     fs,files=memory({['config.ini']=partial})
     local write,rename=fs.write,fs.rename
@@ -62,16 +62,16 @@ for _,phase in ipairs({'write','verify','backup','install'}) do
     end end
     assert(not pcall(Config.commit,plan,fs))
     assert(files['config.ini']==partial,'original must survive '..phase)
-    assert(not files['config.ini.mmd-init.tmp'])
+    assert(not files['config.ini.amm-init.tmp'])
 end
 fs,files=memory({['config.ini']=partial})
 local write=fs.write
 fs.write=function(path,text) write(path,text);files['config.ini']='external edit' end
 fails(function() Config.commit(plan,fs) end,'changed during')
 assert(files['config.ini']=='external edit')
-fs,files=memory({['config.ini']=partial,['config.ini.mmd-init.bak']='recovery'})
+fs,files=memory({['config.ini']=partial,['config.ini.amm-init.bak']='recovery'})
 fails(function() Config.commit(plan,fs) end,'needs review')
-assert(fs.writes==0 and files['config.ini.mmd-init.bak']=='recovery')
+assert(fs.writes==0 and files['config.ini.amm-init.bak']=='recovery')
 fs,files=memory({['config.ini']=partial})
 local rename=fs.rename
 fs.rename=function(a,b)
@@ -79,12 +79,12 @@ fs.rename=function(a,b)
     rename(a,b)
 end
 fails(function() Config.commit(plan,fs) end,'rollback failed')
-assert(files['config.ini']=='external edit' and files['config.ini.mmd-init.bak']==partial)
+assert(files['config.ini']=='external edit' and files['config.ini.amm-init.bak']==partial)
 fs,files=memory()
 write=fs.write
 fs.write=function(path,text) write(path,text);files['config.ini']='created externally' end
 fails(function() Config.commit({path='config.ini',content='defaults'},fs) end,'changed during')
-assert(files['config.ini']=='created externally' and not files['config.ini.mmd-init.tmp'])
+assert(files['config.ini']=='created externally' and not files['config.ini.amm-init.tmp'])
 
 -- Plan validates paths and DMM compatibility before any writes, restoring its
 -- private parser's fs even when DMM throws.
@@ -108,11 +108,25 @@ choices.open=function() return {} end
 for _,setting in ipairs(settings) do setting.file='nested/preferences.ini' end
 local nested=Config.plan(provider,'schema',choices,fs)
 assert(nested.path=='Mods/Example/nested/preferences.ini')
-local events={}
-Config.initConfig({dmmEligible=true,configProviders={provider}},function(event,detail) events[#events+1]=detail end,
-    {read=function() error('permission denied') end},choices)
-assert(#events==1 and events[1]:find('permission denied',1,true))
-events={}
-Config.initConfig({dmmEligible=true},function(event,detail) events[#events+1]=detail end,fs,{})
-assert(#events==1 and events[1]:find('unsupported DMM',1,true))
-print('PASS initConfig precedence, byte preservation, path validation and transaction recovery')
+
+-- The DMM-owned wrapper initializes every ordinary provider, even when it has
+-- no migration metadata. Test-only providers remain memory-only.
+local ordinarySettings={{id='Enabled',kind='toggle',values={0,1},labels={'Off','On'},key='Enabled',section='General',default=1,file='config.ini'}}
+local wrapped={}
+function wrapped.parse() return ordinarySettings end
+function wrapped.index(setting,value)
+    for i,candidate in ipairs(setting.values or {}) do if candidate==value then return i end end
+end
+function wrapped.open(opened)
+    if wrapped.fs then assert(wrapped.fs.read('Mods/Ordinary/config.ini')=='[General]\nEnabled=1\n') end
+    return {provider=opened,items=opened.choices or {},error=nil}
+end
+fs,files=memory({['Mods/Ordinary/mod_settings.ini']='[Setting.Enabled]\nId=Enabled\n'})
+assert(Config.install(wrapped,fs))
+local ordinary={id='Ordinary',path='Mods/Ordinary/mod_settings.ini',choices=ordinarySettings}
+assert(not wrapped.open(ordinary).error)
+assert(files['Mods/Ordinary/config.ini']=='[General]\nEnabled=1\n','ordinary provider was not initialized')
+local writes=fs.writes
+wrapped.open({id='Test',path='missing',choices=ordinarySettings,testOnly=true})
+assert(fs.writes==writes,'test-only provider touched configuration')
+print('PASS in-state config planning preserves bytes, validates paths and recovers transactions')
