@@ -1,3 +1,107 @@
+# 0.1.52
+
+- Fix DMM localization module loading in the standalone decorator state by
+  passing only the rewritten path to `loadfile`. This restores localized dirty
+  label matching without adding polling or UObject access during startup.
+
+# 0.1.51
+
+- Remove the process-wide `UTextBlock::SetText` hook implicated in crash AA40011448729B47EDFCB8846C95AF72.
+- Observe dirty text only on bound DMM rows during the existing active-menu update; no dirty-label callback runs during gameplay.
+- Add one `PAGE_TIMING` diagnostic per page build with discovery, localization, decoration, route and dirty-binding durations.
+- Replace the native mapped-preset adapter with DMM extension API version 1 and ship a pure-Lua package with no DLL.
+
+# 0.1.50
+
+- Replace the unavailable `UButton:OnButtonClickedEvent` hook with one bounded left-mouse key callback.
+- Deliver queued clicks to the hovered paired picker only from the existing menu-scoped game-thread update.
+- Avoid sparse delegate access, repeated failed hook registrations and repeated pair-construction failures.
+- Keep attribution of crash E880E96A4DB5418CA744558698206985 unresolved; its game-thread null dereference has a different signature from the earlier UE4SS delegate-reflection crashes.
+
+# 0.1.49
+
+- Remove reflected access to UButton's sparse multicast `OnClicked` property.
+- Queue owned picker clicks through the hookable `UButton::OnButtonClickedEvent` function, retaining the same menu scope, receiver validation and teardown.
+- Keep crash attribution unresolved: the supplied startup dump matches the delegate-reflection failure signature, while its log belongs to the following launch.
+
+# 0.1.48
+
+- Bind normal DMM page selections from the exact active provider `ScrollBox`, avoiding a full widget-tree traversal on first and repeated openings.
+- Build refresh routes only for recognized setting and decoration controls; retain one bounded full-tree traversal for activation and unrelated-switcher recovery.
+- Publish the versioned `settings_api.lua` consumer contract for event-driven notifications after successful durable Apply.
+
+# 0.1.47
+
+- Add reusable parent headings for related categories through `DecoParent` and `DecoParentLevel`.
+- Keep subgroup ordering, navigation and page-ready rebinding intact beneath parent headings.
+- Keep parent headings independent of picker values; providers control subgroup visibility through DMM's ordinary visibility metadata.
+
+# 0.1.46
+
+- Rebind decorators after a picker changes which settings rows are visible.
+- Coalesce visibility and category-order changes into one deferred page-ready event.
+- Reuse the active dirty-label hook across same-page rebinding instead of unregistering and registering it again.
+
+# 0.1.45
+
+- Bind decorations, paired Mode rows and dirty-label metadata directly by provider and setting IDs, independently of row or metadata order.
+- Remove positional and label matching fallbacks; reject missing, duplicate or mixed-provider row identities.
+
+# 0.1.44
+
+- Attach provider and setting IDs to row-owned markers so grouped and repeated labels bind by identity.
+- Align paired, fixed-mode and unpaired keybindings on the same grid, reserving blank mode space without creating controls.
+- Remove per-option layout measurement when constructing mode controls.
+
+# 0.1.43
+
+- Add declarative numeric maps and ordered conditional source rules for migrating absent configuration keys from the original file.
+- Preserve explicit destinations and original configuration bytes; validate migrated values before transactional replacement.
+- Keep settings unavailable when a declared migration fails, preventing Apply from replacing legacy choices with defaults.
+
+# 0.1.42
+
+- Dim fixed Tap/Hold labels without disabling key capture; restore normal text contrast when the paired mode becomes editable.
+
+# 0.1.41
+
+- Skip dirty-label row discovery for MMD's own synchronous decoration text during page binding, preserving DMM value notifications and restoring handling after construction failures.
+
+# 0.1.40
+
+- Add DecoMode=Tap|Hold as a fixed presentation fallback for key bindings without a logically visible paired mode.
+- Follow DMM model visibility when switching between fixed labels and editable Tap/Hold controls, preserving saved modes and discarding stale clicks.
+- Retain key capture, row ownership and existing menu-scoped updates without adding timers.
+
+# 0.1.39
+
+- Standardize metadata on DecoType=tab|keybind, DecoLevel=0–6 and the Deco prefix; retain legacy read compatibility.
+- Add tab pickers, six font levels, a header toggle, category help, conditional labels and category ordering through metadata.
+- Preserve row identity when categories move and use DMM's existing menu tick for new controls.
+- Keep preset-derived keys visually clean after a manual edit; select Custom automatically and skip it during preset navigation.
+- Support DefaultFrom for missing configuration values, preserving explicit values and validated legacy defaults.
+
+# 0.1.38
+
+- Reduce preset refresh overhead: validate the menu owner once per value callback, ignore unrelated text after binding, and skip unchanged label styling.
+
+- Render dirty stars as separate row-owned widgets in the existing left gutter, keeping label text and position unchanged. Preserve italic styling and preset suppression.
+
+# 0.1.37
+
+- Display dirty settings with a left-hand star and italic label across recognized DMM sliders, pickers and toggles, replacing visible value-side stars.
+- Restore original label styling when changes are applied or restored; combine key and Tap/Hold dirty presentation.
+- Add panel-wide dirty-display suppression for MMD value changes, including deferred DMM refreshes, without changing Apply/Restore state.
+- Expand MappedPresetTargets/MappedPresetValues synchronously in DMM's pending model; update visible keys and modes together and select Custom after a manual target edit.
+- Hide preset-derived dirty indicators while preserving Apply/Restore state; reveal actual target differences when switching to Custom.
+- Install the mapping adapter through UE4SS's native DMM startup callback, without editing DMM files or adding gameplay polling.
+
+# 0.1.36
+
+- Initialize provider INI files from metadata defaults at startup, with existing values taking precedence.
+- Preserve existing configuration bytes and add missing assignments before DMM opens settings; validate with DMM and protect writes with transaction recovery.
+- Include disabled direct providers and settings without decorations; add no gameplay polling.
+
 # 0.1.35
 
 - Reject release manifests that would place a Tools directory anywhere in the ZIP, regardless of capitalization.

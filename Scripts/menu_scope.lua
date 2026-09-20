@@ -55,7 +55,7 @@ function M.install(log,onChange,onRetire)
         scope.owner=found
         return true
     end
-    local function openHost(widget,expectedTree)
+    local function openHost(widget,expectedTree,selection)
         if not widget or not widget:IsValid() then return end
         if not widget:GetFName():ToString():match('^CommonActivatableWidget_') then return end
         if not widget:IsInViewport() or not widget:IsActivated() or not widget:IsVisible()
@@ -71,7 +71,7 @@ function M.install(log,onChange,onRetire)
         if not path then return end
         scope.epoch=scope.epoch+1
         scope.path=path;scope.address=tostring(widget:GetAddress());scope.treeAddress=treeAddress
-        if onChange then onChange(path,scope.epoch) end
+        if onChange then onChange(path,scope.epoch,selection) end
     end
     local function activate(context)
         if not scope.enabled then return end
@@ -91,10 +91,21 @@ function M.install(log,onChange,onRetire)
         if not scope.enabled then return end
         -- DMM finishes populate() before switching the page. The queued update runs
         -- after the enclosing showDetail()/show() completes, never in this callback.
-        local tree=liveContext(context):GetOuter()
+        local switcher=liveContext(context)
+        local tree=switcher:GetOuter()
         if not tree or not tree:IsValid() then return end
         local address=tostring(tree:GetAddress())
-        openHost(tree:GetOuter(),address)
+        local selection
+        pcall(function()
+            local index=switcher:GetActiveWidgetIndex()
+            local child=index and index>=0 and switcher:GetChildAt(index) or nil
+            if child and child:IsValid() then
+                local full=child:GetFullName()
+                selection={path=full:match('^%S+ (.+)$'),address=tostring(child:GetAddress())}
+                if not selection.path then selection=nil end
+            end
+        end)
+        openHost(tree:GetOuter(),address,selection)
     end
     local function deactivated(context)
         if not scope.enabled or not scope.owner then return end

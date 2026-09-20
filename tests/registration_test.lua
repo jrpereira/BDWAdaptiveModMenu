@@ -46,4 +46,26 @@ manifests['a.ini']=content('First',254,'Key','')
 result=discover()
 assert(#result.decorations==0 and result.byProvider.Same==nil)
 print('PASS undecorated first provider still reserves its Mod Id')
+manifests['a.ini']=content('First',254,'Key','')..'DecoType=keybind\n'
+assert(#discover().decorations==1,'Canonical keybind overrides empty legacy metadata')
+manifests['a.ini']=content('First',254,'Key','keybind')..'DecoType=tab\n'
+assert(#discover().decorations==0,'Canonical type overrides legacy keybind registration')
+print('PASS canonical DecoType registration and precedence')
+local grouped='[Mod]\nId=Same\nName=Grouped\n'
+for _,group in ipairs({'Primary','Secondary'}) do
+ grouped=grouped..'[Category.'..group..']\nDecoLevel=4\n'
+ for _,label in ipairs({'X','Y','Size','Opacity','Key'}) do
+  grouped=grouped..'[Setting.'..group..label..']\nId='..group..label..'\nGroup='..group..'\nLabel='..label..'\nType=integer\nMinimum=0\nMaximum=254\nDefault=75\n'
+  if label=='Key' then grouped=grouped..'DecoType=keybind\n' end
+ end
+end
+manifests['a.ini']=grouped
+result=discover()
+assert(#result.providerList[1].choices==10 and #result.decorations==2)
+for i,s in ipairs(result.providerList[1].choices) do
+ assert(s.sourceIndex==i,'categories must not consume setting identity indices')
+end
+assert(result.byProvider.Same.PrimaryKey and result.byProvider.Same.SecondaryKey)
+assert(not result.byProvider.Same.PrimaryKey.modeId and not result.byProvider.Same.SecondaryKey.modeId)
+print('PASS grouped settings retain distinct IDs and schema order with repeated labels')
 io.open=originalOpen

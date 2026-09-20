@@ -9,6 +9,7 @@ FName=fName
 local function chord(name) return {Key={KeyName=fName(name)}} end
 local function textWidget(text)
     local w=obj({text=text})
+    function w:SetRenderOpacity(value) self.opacity=value end
     function w:SetText(value) assert(type(value)=='table' and value.ftext,'raw string sent to SetText'); self.text=value.value end
     return w
 end
@@ -46,8 +47,8 @@ capture(i,s,'K')
 assert(slider.writes==1 and math.abs(slider.value-75/254)<1e-8)
 assert(i.row.labelWidget.text=='Ability','invented dirty state before DMM acknowledgement')
 i.row.valueWidget.text='75 *';assert(M.tick(i,log))
-assert(i.row.labelWidget.text=='Ability *','DMM dirty presentation not mirrored')
-print('PASS reflected capture writes stock slider once; dirty presentation follows DMM')
+assert(i.row.labelWidget.text=='Ability','key capture must leave dirty styling to dirty_labels')
+print('PASS reflected capture writes stock slider once; global dirty presentation has one owner')
 for _,dirty in ipairs({false,true}) do
     i,s,slider=fixture(82,dirty)
     local label=i.row.labelWidget.text
@@ -113,6 +114,23 @@ i.pair={button=button,inner=inner,nav=nav,valueWidget=textWidget('Tap'),text=tex
 i.pendingClicks=3;M.tick(i,log);assert(nav.value==1 and nav.writes==1 and i.pendingClicks==0)
 M.tick(i,log);assert(nav.writes==1)
 print('PASS queued short clicks consumed exactly once without IsPressed; net mode preserved')
+function button:SetIsEnabled(value) self.enabled=value end
+i.descriptor.fixedMode='Tap';i.row.modeState=textWidget('MMD_MODE\nfixed')
+i.pair.valueWidget.text='Hold';i.pendingClicks=2
+assert(M.tick(i,log) and i.pair.text.text=='Tap' and button.enabled==false)
+assert(i.pair.text.opacity==0.45,'fixed mode must appear unavailable')
+assert(nav.value==1 and nav.writes==1 and i.pendingClicks==0)
+capture(i,s,'K');assert(slider.writes==1,'Fixed-mode display must not block key capture')
+i.row.modeState.text='MMD_MODE\neditable';i.pendingClicks=1
+assert(M.tick(i,log) and button.enabled and i.pair.text.text=='Hold' and nav.writes==1,'Transition discards stale clicks')
+assert(i.pair.text.opacity==1,'editable mode must regain normal contrast')
+i.pendingClicks=1;assert(M.tick(i,log) and nav.value==0 and nav.writes==2)
+i.row.modeState.text='MMD_MODE\nfixed';i.pendingClicks=1
+assert(M.tick(i,log) and nav.writes==2 and i.pair.text.text=='Tap')
+assert(i.pair.text.opacity==0.45)
+i.row.modeState.alive=false;i.pendingClicks=1
+assert(not M.tick(i,log) and nav.writes==2 and i.pendingClicks==0,'Stale ownership must not submit clicks')
+print('PASS fixed/editable mode switches preserve saved mode, discard stale clicks and allow key capture')
 
 i,s,slider=fixture(82,false)
 s.SelectedKey={Key={}}
@@ -163,14 +181,12 @@ print('PASS unmapped backing values display numerically through changes and canc
 
 i,s,slider=fixture(82,false)
 i.row.valueWidget.text='82 *'
-failNextText(i.row.labelWidget)
-assert(not pcall(M.tick,i,log) and i.labelDirty==false)
-assert(M.tick(i,log) and i.row.labelWidget.text=='Ability *' and i.labelDirty)
+assert(M.tick(i,log) and i.row.labelWidget.text=='Ability','key capture must not compete with global dirty styling')
 i.pair={valueWidget=textWidget('Hold'),text=textWidget('Tap'),lastText='Tap'}
 failNextText(i.pair.text)
 assert(not pcall(M.tick,i,log) and i.pair.lastText=='Tap')
 assert(M.tick(i,log) and i.pair.text.text=='Hold' and i.pair.lastText=='Hold')
-print('PASS failed dirty and mode label writes remain retryable until successfully rendered')
+print('PASS mode label writes remain retryable; dirty styling has one owner')
 
 -- Minimal owned subtree, exercising the production save/adopt implementation.
 local function ownRow(instance)
@@ -186,11 +202,10 @@ local function ownRow(instance)
     instance.row.label='Ability'
     M.save(instance)
 end
-for _,target in ipairs({'key','dirty'}) do
+do
     i,s,slider=fixture(82,false)
     ownRow(i)
-    if target=='dirty' then i.row.valueWidget.text='75 *' end
-    failNextText(target=='key' and i.keyText or i.row.labelWidget)
+    failNextText(i.keyText)
     s.SelectedKey=chord('K');assert(not pcall(M.tick,i,log))
     assert(slider.writes==1)
     slider.value=84/254;i.row.valueWidget.text='84'
@@ -199,7 +214,7 @@ for _,target in ipairs({'key','dirty'}) do
     assert(M.tick(adopted,log))
     assert(slider.writes==1 and math.abs(slider.value-84/254)<1e-8 and adopted.keyText.text=='T')
 end
-print('PASS failed key/dirty rendering followed by Restore and real row adoption never replays a stale key')
+print('PASS failed key rendering followed by Restore and real row adoption never replays a stale key')
 
 for _,cancel in ipairs({false,true}) do
     i,s,slider=fixture(82,false)

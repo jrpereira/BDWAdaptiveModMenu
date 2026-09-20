@@ -10,6 +10,10 @@ The source also serves as a practical example of extending existing Unreal UI: f
 
 - Upgrades Dawnwalker Mod Menu integer settings into interactive key-binding pickers.
 - Combines key bindings with optional Tap/Hold selectors.
+- Expands mapped presets into their target keys and modes; manual target edits select Custom.
+- Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
+- Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting replaces the default mod header.
+- Supports conditional group help, value-dependent labels and category ordering while preserving existing setting IDs.
 - Supports metadata-based integration through `mod_settings.ini`—no registration code required.
 - Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
 - Adds separate hover feedback for key and mode pickers, plus highlighting during key capture.
@@ -23,6 +27,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 
 - Menu updates use 100 ms polling, so visual feedback can lag slightly.
 - Depends on Mod Menu's structure: changes to its widget layout or lifecycle can break decoration.
+- Mapped presets require a Dawnwalker Mod Menu version with the Lua extension API; restart the game after installation.
 
 ## Documentation
 
@@ -30,13 +35,13 @@ See the [documentation on GitHub](https://github.com/jrpereira/BDWModMenuDecorat
 
 ## Add a key-binding control
 
-In your mod's `mod_settings.ini`, define an integer setting and add `Decoration = keybind`:
+In your mod's `mod_settings.ini`, define an integer setting and add `DecoType = keybind`:
 
 ```ini
 [Setting.MyAction]
 Id = MyAction
 Type = integer
-Decoration = keybind
+DecoType = keybind
 Label = My action
 Group = Controls
 ConfigFile = config.ini
@@ -58,7 +63,7 @@ Immediately after the key setting, add a picker whose ID uses the same name foll
 [Setting.MyActionMode]
 Id = MyActionMode
 Type = picker
-Decoration = keybind
+DecoType = keybind
 Label = My action mode
 Group = Controls
 ConfigFile = config.ini

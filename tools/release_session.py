@@ -15,7 +15,10 @@ def game_session():
     if os.name != 'nt':
         raise RuntimeError('Live process detection requires Windows')
     command = "@(Get-Process -Name Dawnwalker -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{pid=$_.Id;started_at=$_.StartTime.ToUniversalTime().ToString('o')} }) | ConvertTo-Json -Compress"
-    raw = subprocess.check_output(['powershell', '-NoProfile', '-NonInteractive', '-Command', command], text=True, timeout=20).strip()
+    shell = shutil.which('pwsh') or shutil.which('powershell')
+    if not shell:
+        raise RuntimeError('PowerShell is required for live process detection')
+    raw = subprocess.check_output([shell, '-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command], text=True, timeout=20).strip()
     value = json.loads(raw) if raw else None
     if isinstance(value, list):
         if len(value) > 1:
@@ -107,16 +110,6 @@ def launch(result, command, ignore_once=False, session_provider=game_session, ru
 
 
 def inspect_candidate(manifest, staged, deployed, working, session=None):
-    if 'native_provenance' in manifest:
-        from native_candidate import validate, version
-        changes = validate(manifest, working)
-        result = compare(manifest, staged, deployed, session, working_version=version(working))
-        result['working_differences'] = changes
-        if changes:
-            result['needs_attention'] = True
-            result['options'] = ['Rebuild current native source with native_candidate.py, then repeat verification.',
-                                 'Ignore this discrepancy for this launch only; retain the warning in the test record.']
-        return result
     from package_manifest import definition, version
     spec = definition(working)
     if manifest['module'] != spec['module'] or set(manifest['files']) != set(spec['files']):

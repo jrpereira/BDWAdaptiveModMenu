@@ -1,46 +1,43 @@
--- Own buttons only: native OnClicked invokes an existing no-argument UWidget
--- function. The scoped hook queues Lua counts; it never updates stock widgets.
+-- Queue left-button input as primitive Lua state. The key callback performs no
+-- UObject work; the existing menu-only game-thread update resolves the current
+-- button and delivers the click to the hovered paired picker.
 local M={}
 function M.new(log)
-    local self={owners={},path=nil,hook=nil}
+    local self={owners={},path=nil,pointerClicks=0,available=false}
+    local ok,err=pcall(function()
+        assert(type(RegisterKeyBind)=='function','RegisterKeyBind unavailable')
+        assert(type(Key)=='table' and Key.LEFT_MOUSE_BUTTON~=nil,'left mouse key unavailable')
+        RegisterKeyBind(Key.LEFT_MOUSE_BUTTON,function()
+            if self.path and self.pointerClicks<16 then self.pointerClicks=self.pointerClicks+1 end
+        end)
+    end)
+    if ok then self.available=true else log('CLICK_INPUT_FAILED',tostring(err)) end
     function self:close()
-        self.path=nil
+        self.path=nil;self.pointerClicks=0
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
-        if self.hook then
-            local ok,err=pcall(UnregisterHook,'/Script/UMG.Widget:ForceLayoutPrepass',self.hook[1],self.hook[2])
-            if ok then self.hook=nil else log('CLICK_HOOK_FAILED',tostring(err)) end
-        end
     end
     function self:open(path)
-        self.path=path
+        self.path=path;self.pointerClicks=0
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
-        if self.hook then return true end
-        local ok,pre,post=pcall(RegisterHook,'/Script/UMG.Widget:ForceLayoutPrepass',function() end,function(context)
-            if not self.path then return end
-            local success,err=pcall(function()
-                local button=context:get()
-                local owner=self.owners[tostring(button:GetAddress())]
-                if not owner or owner.path~=self.path or owner.instance.disabled then return end
-                if button:GetFullName()~=owner.full then return end
-                owner.instance.pendingClicks=(owner.instance.pendingClicks or 0)+1
-            end)
-            if not success then log('CLICK_EVENT_FAILED',tostring(err)) end
-        end)
-        if not ok or type(pre)~='number' or type(post)~='number' then
-            self.path=nil
-            return false,tostring(pre)
-        end
-        self.hook={pre,post}
+        if not self.available then self.path=nil;return false,'left mouse callback unavailable' end
         return true
     end
-    function self:attach(instance,button,existing)
-        assert(self.path and self.hook,'click hook unavailable')
+    function self:attach(instance,button)
+        assert(self.path and self.available,'click input unavailable')
         local address=tostring(button:GetAddress())
-        local full=button:GetFullName()
-        -- Add only to our newly constructed button. Never touch DMM delegates.
-        if not existing then button.OnClicked:Add(button,FName('ForceLayoutPrepass')) end
-        self.owners[address]={instance=instance,path=self.path,full=full}
+        self.owners[address]={instance=instance,path=self.path,full=button:GetFullName()}
     end
+    function self:deliver(instance)
+        if self.pointerClicks==0 or not self.path or not instance or not instance.pair then return end
+        local button=instance.pair.button
+        if not button or not button:IsValid() then return end
+        local owner=self.owners[tostring(button:GetAddress())]
+        if not owner or owner.instance~=instance or owner.path~=self.path or button:GetFullName()~=owner.full then return end
+        if button:IsHovered()~=true then return end
+        instance.pendingClicks=(instance.pendingClicks or 0)+self.pointerClicks
+        self.pointerClicks=0
+    end
+    function self:discard() self.pointerClicks=0 end
     function self:retire(path)
         for address,owner in pairs(self.owners) do
             if not path or owner.path==path then
@@ -48,6 +45,7 @@ function M.new(log)
                 self.owners[address]=nil
             end
         end
+        if not path or path==self.path then self.pointerClicks=0 end
     end
     function self:forget(instance)
         instance.pendingClicks=0
