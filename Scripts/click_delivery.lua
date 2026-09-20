@@ -3,15 +3,20 @@
 -- button and delivers the click to the hovered paired picker.
 local M={}
 function M.new(log)
-    local self={owners={},path=nil,pointerClicks=0,available=false}
-    local ok,err=pcall(function()
-        assert(type(RegisterKeyBind)=='function','RegisterKeyBind unavailable')
-        assert(type(Key)=='table' and Key.LEFT_MOUSE_BUTTON~=nil,'left mouse key unavailable')
-        RegisterKeyBind(Key.LEFT_MOUSE_BUTTON,function()
-            if self.path and self.pointerClicks<16 then self.pointerClicks=self.pointerClicks+1 end
+    local self={owners={},path=nil,pointerClicks=0,available=nil}
+    local function install()
+        if self.available~=nil then return self.available end
+        local ok,err=pcall(function()
+            assert(type(RegisterKeyBind)=='function','RegisterKeyBind unavailable')
+            assert(type(Key)=='table' and Key.LEFT_MOUSE_BUTTON~=nil,'left mouse key unavailable')
+            RegisterKeyBind(Key.LEFT_MOUSE_BUTTON,function()
+                if self.path and self.pointerClicks<16 then self.pointerClicks=self.pointerClicks+1 end
+            end)
         end)
-    end)
-    if ok then self.available=true else log('CLICK_INPUT_FAILED',tostring(err)) end
+        self.available=ok
+        if not ok then log('CLICK_INPUT_FAILED',tostring(err)) end
+        return ok
+    end
     function self:close()
         self.path=nil;self.pointerClicks=0
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
@@ -19,7 +24,7 @@ function M.new(log)
     function self:open(path)
         self.path=path;self.pointerClicks=0
         for _,owner in pairs(self.owners) do owner.instance.pendingClicks=0 end
-        if not self.available then self.path=nil;return false,'left mouse callback unavailable' end
+        if not install() then self.path=nil;return false,'left mouse callback unavailable' end
         return true
     end
     function self:attach(instance,button)

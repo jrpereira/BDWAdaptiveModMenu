@@ -6,7 +6,11 @@ local function obj(fields)
 end
 local function fName(name) return {ToString=function() return name end} end
 FName=fName
-local function chord(name) return {Key={KeyName=fName(name)}} end
+local function chord(name,flags)
+    flags=flags or {}
+    return {Key={KeyName=fName(name)},bShift=flags.shift or false,bCtrl=flags.ctrl or false,
+        bAlt=flags.alt or false,bCmd=flags.cmd or false}
+end
 local function textWidget(text)
     local w=obj({text=text})
     function w:SetRenderOpacity(value) self.opacity=value end
@@ -38,9 +42,9 @@ local function fixture(value,dirty)
     assert(M.tick(instance,log));assert(slider.writes==0,'initialization changed stock state')
     return instance,selector,slider
 end
-local function capture(i,s,name)
+local function capture(i,s,name,flags)
     s.selecting=true;assert(M.tick(i,log))
-    s.selecting=false;s.SelectedKey=chord(name);assert(M.tick(i,log))
+    s.selecting=false;s.SelectedKey=chord(name,flags);assert(M.tick(i,log))
 end
 local i,s,slider=fixture(82,false)
 capture(i,s,'K')
@@ -67,6 +71,19 @@ print('PASS Restore supersedes outstanding capture without stale reassertion')
 i,s,slider=fixture(82,false);capture(i,s,'F24')
 assert(slider.writes==0 and i.keyText.text=='R')
 print('PASS unsupported capture fails closed')
+for _,case in ipairs({
+    {'LeftShift',0xA0,'Left Shift'},{'RightShift',0xA1,'Right Shift'},
+    {'LeftControl',0xA2,'Left Ctrl'},{'RightControl',0xA3,'Right Ctrl'},
+    {'LeftAlt',0xA4,'Left Alt'},{'RightAlt',0xA5,'Right Alt'},
+    {'LeftCommand',0x5B,'Left Win'},{'RightCommand',0x5C,'Right Win'},
+}) do
+    i,s,slider=fixture(82,false);capture(i,s,case[1],{ctrl=true})
+    assert(slider.writes==1 and math.abs(slider.value-case[2]/254)<1e-8 and i.keyText.text==case[3])
+end
+print('PASS left/right modifier keys are captured as distinct virtual-key values')
+i,s,slider=fixture(82,false);capture(i,s,'K',{ctrl=true})
+assert(slider.writes==0 and i.keyText.text=='R' and events[#events]:find('UNSUPPORTED_KEY_CHORD',1,true))
+print('PASS modifier chords are rejected instead of silently storing their primary key')
 i,s,slider=fixture(0,false)
 assert(i.keyText.text=='Unbound' and slider.writes==0)
 capture(i,s,'K');assert(slider.writes==1)
@@ -115,17 +132,17 @@ i.pendingClicks=3;M.tick(i,log);assert(nav.value==1 and nav.writes==1 and i.pend
 M.tick(i,log);assert(nav.writes==1)
 print('PASS queued short clicks consumed exactly once without IsPressed; net mode preserved')
 function button:SetIsEnabled(value) self.enabled=value end
-i.descriptor.fixedMode='Tap';i.row.modeState=textWidget('MMD_MODE\nfixed')
+i.descriptor.fixedMode='Tap';i.row.modeState=textWidget('AMM_MODE\nfixed')
 i.pair.valueWidget.text='Hold';i.pendingClicks=2
 assert(M.tick(i,log) and i.pair.text.text=='Tap' and button.enabled==false)
 assert(i.pair.text.opacity==0.45,'fixed mode must appear unavailable')
 assert(nav.value==1 and nav.writes==1 and i.pendingClicks==0)
 capture(i,s,'K');assert(slider.writes==1,'Fixed-mode display must not block key capture')
-i.row.modeState.text='MMD_MODE\neditable';i.pendingClicks=1
+i.row.modeState.text='AMM_MODE\neditable';i.pendingClicks=1
 assert(M.tick(i,log) and button.enabled and i.pair.text.text=='Hold' and nav.writes==1,'Transition discards stale clicks')
 assert(i.pair.text.opacity==1,'editable mode must regain normal contrast')
 i.pendingClicks=1;assert(M.tick(i,log) and nav.value==0 and nav.writes==2)
-i.row.modeState.text='MMD_MODE\nfixed';i.pendingClicks=1
+i.row.modeState.text='AMM_MODE\nfixed';i.pendingClicks=1
 assert(M.tick(i,log) and nav.writes==2 and i.pair.text.text=='Tap')
 assert(i.pair.text.opacity==0.45)
 i.row.modeState.alive=false;i.pendingClicks=1

@@ -12,6 +12,11 @@ local byName = {
     Left=0x25, Up=0x26, Right=0x27, Down=0x28,
     Insert=0x2D, Delete=0x2E,
 
+    LeftCommand=0x5B, RightCommand=0x5C,
+    LeftShift=0xA0, RightShift=0xA1,
+    LeftControl=0xA2, RightControl=0xA3,
+    LeftAlt=0xA4, RightAlt=0xA5,
+
     Zero=0x30, One=0x31, Two=0x32, Three=0x33, Four=0x34,
     Five=0x35, Six=0x36, Seven=0x37, Eight=0x38, Nine=0x39,
 
@@ -26,6 +31,8 @@ local aliases = {
     LeftMouse='LeftMouseButton', RightMouse='RightMouseButton', MiddleMouse='MiddleMouseButton',
     Mouse4='ThumbMouseButton', Mouse5='ThumbMouseButton2',
     UpArrow='Up', DownArrow='Down', LeftArrow='Left', RightArrow='Right',
+    LeftCtrl='LeftControl', RightCtrl='RightControl',
+    LeftWindows='LeftCommand', RightWindows='RightCommand',
 }
 
 local byValue = {}
@@ -41,10 +48,6 @@ end
 
 function M.toName(value)
     return byValue[tonumber(value)]
-end
-
-function M.supported(name)
-    return M.toValue(name)~=nil
 end
 
 return M

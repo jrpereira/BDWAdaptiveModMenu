@@ -1,5 +1,5 @@
 -- Loaded by DawnwalkerModMenu's extension loader inside DMM's Lua state.
--- Keep this file self-contained: the ordinary MMD mod runs in a different state.
+-- Keep this file self-contained: the ordinary AdaptiveModMenu mod runs in a different state.
 local source=assert(debug.getinfo(1,'S').source,'extension source unavailable')
 local directory=assert(source:match('^@(.+[\\/])[^\\/]+$'),'extension directory unavailable')
 
@@ -12,7 +12,7 @@ local function module(name)
 end
 
 return {
-    id='ModMenuDecorator',
+    id='AdaptiveModMenu',
     apiVersion=1,
     install=function(dmm)
         assert(type(dmm)=='table' and dmm.version==1,'unsupported DMM extension API')
@@ -21,11 +21,22 @@ return {
         local mapped=module('mapped_presets')
         local presentation=module('presentation')
         local config=module('init_config')
+        local lifecycle=module('dmm_lifecycle')
         assert(type(mapped.install)=='function','mapped preset installer unavailable')
         assert(type(presentation.install)=='function','presentation installer unavailable')
         assert(type(config.install)=='function','configuration installer unavailable')
+        assert(type(dmm.events)=='table' and type(dmm.events.on)=='function','DMM lifecycle events unavailable')
+        assert(type(lifecycle.publisher)=='function','lifecycle publisher unavailable')
         mapped.install(dmm.choices,dmm.controls)
         presentation.install(dmm.choices,dmm.controls,dmm.pages)
         config.install(dmm.choices)
+        local publisher=lifecycle.publisher(function(event,detail)
+            print('[AdaptiveModMenu] '..event..' '..tostring(detail or '')..'\n')
+        end)
+        for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
+            dmm.events:on(name,function(context) publisher:publish(name,context) end)
+        end
+        assert(ModRef and type(ModRef.SetSharedVariable)=='function','DMM extension handshake unavailable')
+        ModRef:SetSharedVariable('AMM_DMM_Extension_v1.ready','1')
     end,
 }

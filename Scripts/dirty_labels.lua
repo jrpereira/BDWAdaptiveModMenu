@@ -1,7 +1,7 @@
 -- Presentation only: DMM owns dirty state, pending values, Apply and Restore.
 local Discovery=require('widget_discovery')
 local M={}
-local PREFIX='MMD_DIRTY_3\n'
+local PREFIX='AMM_DIRTY_3\n'
 local function encode(s) return (s:gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')) end
 local function decode(s) return (s:gsub('%%(%x%x)',function(h) return string.char(tonumber(h,16)) end)) end
 local function name(value) return type(value)=='string' and value or value:ToString() end
@@ -32,7 +32,7 @@ local function readMarker(shell)
             if text:sub(1,#PREFIX)==PREFIX then
                 local fields={}
                 for line in text:sub(#PREFIX+1):gmatch('([^\n]*)\n') do fields[#fields+1]=line end
-                assert(#fields==9 or #fields==10,'invalid dirty-label state')
+                assert(#fields==10,'invalid dirty-label state')
                 return child,{dirty=fields[1]=='1',base=decode(fields[2]),face=decode(fields[3]),
                     skew=assert(tonumber(fields[4])),italic=decode(fields[5]),italicSkew=assert(tonumber(fields[6])),suppressed=fields[7]=='1',pending=decode(fields[8]),lastValue=decode(fields[9]),rendered=fields[10]}
             end
@@ -74,14 +74,8 @@ local function styleState(label,dirty)
     return state
 end
 
-function M.new(log,registry)
-    local controller={records={},settings={},busy=false,showDirty=true}
-    -- This gates newly received dirty signals, not DMM's dirty state. Turning
-    -- it back on never retroactively reveals changes made under suppression.
-    function controller:setShowDirty(show)
-        assert(type(show)=='boolean','showDirty must be boolean')
-        local previous=self.showDirty;self.showDirty=show;return previous
-    end
+function M.new(log)
+    local controller={records={},busy=false}
     -- Our decoration construction writes presentation text, never DMM values.
     -- Do not rediscover rows for those synchronous SetText notifications.
     function controller:construct(fn)
@@ -93,32 +87,6 @@ function M.new(log,registry)
         return table.unpack(result,2,result.n)
     end
     local function displayed(state) return state.dirty and not state.suppressed end
-    local localization
-    if registry and registry.dmmChoicesPath then
-        local ok,result=pcall(function()
-            -- gsub returns both the rewritten path and its replacement count.
-            -- Keep only the path so the count is not passed as loadfile's mode.
-            local path=(registry.dmmChoicesPath:gsub('choices%.lua$','localization.lua'))
-            return assert(loadfile(path))()
-        end)
-        if ok and type(result)=='table' and type(result.initialize)=='function' and type(result.provider)=='function' then
-            localization=result
-        else log('DIRTY_LABEL_FAILED','DMM localization API unavailable: '..tostring(result)) end
-    end
-    function controller:localize(provider)
-        if not localization then return end
-        local ok,err=pcall(function()
-            local read=require('init_config').fs.read
-            localization.initialize(read,log)
-            local view=provider.dmmPresentation
-            if not view then
-                view={id=provider.id,name=provider.name,choices=provider.dmmSettings}
-                localization.provider(view,assert(read(provider.path),'metadata unavailable'))
-                provider.dmmPresentation=view
-            else localization.provider(view) end
-        end)
-        if not ok then log('DIRTY_LABEL_FAILED','localization: '..tostring(err)) end
-    end
     local textLibrary
     local function setText(widget,text)
         if Discovery.textOf(widget)==text then return end
@@ -171,47 +139,13 @@ function M.new(log,registry)
             if ownShell and ownLabel then local _,own=readMarker(ownShell);if own then render(ownLabel,own,displayed(own),ownShell) end end
         end
     end
-    function controller:setValue(providerId,settingId,value)
-        assert(self.allowed and self.allowed() and (not self.live or self.live()),'no active settings panel')
-        local record=self.settings[providerId..'\0'..settingId]
-        assert(record and record.setting,'setting is not on the active panel')
-        assert(type(value)=='number' and value==value and math.abs(value)<=1000000000,'invalid setting value')
-        local setting=record.setting
-        local position,text
-        if setting.kind=='slider' then
-            assert(value>=setting.minimum and value<=setting.maximum,'value outside setting range')
-            if value>setting.minimum and value<setting.maximum then
-                value=math.max(setting.minimum,math.min(setting.maximum,tonumber(string.format('%.6f',
-                    setting.minimum+math.floor((value-setting.minimum)/setting.step+0.5)*setting.step))))
-            end
-            position=(value-setting.minimum)/(setting.maximum-setting.minimum)
-            text=(setting.prefix or '')..string.format('%.'..setting.decimals..'f',value)..(setting.suffix or '')
-        else
-            for i,v in ipairs(setting.values) do if value==v then position=i-1;text=setting.labels[i];break end end
-            assert(position,'value is not a declared choice')
-        end
-        return protected(function()
-            local resolve=assert(Discovery.routeResolver(StaticFindObject(self.path),self.allowed),'panel unavailable')
-            local control=assert(resolve(record.control),'control unavailable')
-            local marker,state=readMarker(assert(resolve(record.shell),'row unavailable'))
-            assert(marker,'row state unavailable')
-            local changed=control:GetValue()~=position
-            state.pending=changed and not self.showDirty and text or ''
-            if not changed then state.suppressed=state.dirty and not self.showDirty end
-            setText(marker,serialized(state))
-            if changed then
-                local ok,err=pcall(control.SetValue,control,position)
-                if not ok then state.pending='';setText(marker,serialized(state));error(err) end
-            else renderRecord(resolve,record) end
-        end)
-    end
     function controller:close()
-        self.records={};self.settings={};self.path=nil;self.allowed=nil;self.routes=nil;self.live=nil;self.bound=false;self.showDirty=true
+        self.records={};self.path=nil;self.allowed=nil;self.routes=nil;self.live=nil;self.bound=false
     end
     function controller:open(path,allowed,live)
         if self.path==path then
-            self.records={};self.settings={};self.allowed=allowed;self.live=live
-            self.routes=nil;self.bound=false;self.showDirty=true
+            self.records={};self.allowed=allowed;self.live=live
+            self.routes=nil;self.bound=false
             return true
         end
         self:close();self.path=path;self.allowed=allowed;self.live=live
@@ -224,14 +158,14 @@ function M.new(log,registry)
                 local shell=row.overlay or row.shell
                 if Discovery.valid(shell) and Discovery.valid(row.labelWidget) and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)
-                    local record={value=routes[valueId],label=routes[Discovery.address(row.labelWidget)],shell=routes[Discovery.address(shell)],
-                        control=routes[Discovery.address(row.slider or row.nav)],setting=row.dmmSetting}
+                    local record={value=routes[valueId],label=routes[Discovery.address(row.labelWidget)],
+                        shell=routes[Discovery.address(shell)],setting=row.dmmSetting}
                     if record.value and record.label and record.shell then
                         local marker,state=readMarker(shell)
                         local dirty,clean=M.signal(Discovery.textOf(row.valueWidget) or '',row.dmmSetting)
                         if not marker then
                             state=styleState(row.labelWidget,dirty)
-                            state.suppressed=dirty and not self.showDirty;state.lastValue=clean
+                            state.suppressed=false;state.lastValue=clean
                             local tree=shell:GetOuter()
                             marker=StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'),tree)
                             assert(Discovery.valid(marker),'dirty marker construction failed')
@@ -240,7 +174,7 @@ function M.new(log,registry)
                             assert(shell:AddChildToOverlay(marker),'dirty marker attachment failed')
                         else
                             if dirty then
-                                state.dirty=true;state.suppressed=not self.showDirty;state.lastValue=clean
+                                state.dirty=true;state.suppressed=false;state.lastValue=clean
                             elseif clean~=state.lastValue then
                                 state.dirty=false;state.suppressed=false;state.lastValue=clean
                             end
@@ -261,7 +195,6 @@ function M.new(log,registry)
                             if not ok then pcall(star.RemoveFromParent,star);error(err) end
                         end
                         self.records[valueId]=record;byRow[row]=record
-                        if row.providerId and record.setting then self.settings[row.providerId..'\0'..record.setting.id]=record end
                         setText(row.valueWidget,clean)
                         render(row.labelWidget,state,displayed(state),shell)
                     end
@@ -298,11 +231,11 @@ function M.new(log,registry)
                     if marker and state then
                         local raw=Discovery.textOf(widget) or ''
                         local dirty,clean=M.signal(raw,record.setting)
-                        -- MMD writes the clean value back. Seeing that same clean
+                        -- AMM writes the clean value back. Seeing that same clean
                         -- value on the next tick is not a new DMM notification.
                         if raw~=state.lastValue then
                             state.dirty=dirty
-                            state.suppressed=dirty and (not self.showDirty or (state.pending~='' and state.pending==clean)
+                            state.suppressed=dirty and ((state.pending~='' and state.pending==clean)
                                 or (state.suppressed and state.lastValue==clean))
                             state.pending='';state.lastValue=clean
                             setText(marker,serialized(state));setText(widget,clean)

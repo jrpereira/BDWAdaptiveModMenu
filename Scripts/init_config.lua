@@ -71,7 +71,7 @@ function M.defaultSources(manifest,settings)
     local rules,names={},{}
     for _,setting in ipairs(settings) do
         if setting.id then byId[setting.id]=setting end
-        setting.mmdDefaultFrom=nil;setting.mmdDefaultMap=nil;setting.mmdDefaultRules=nil
+        setting.ammDefaultFrom=nil;setting.ammDefaultMap=nil;setting.ammDefaultRules=nil
     end
     local function finish()
         if not current then return end
@@ -86,7 +86,7 @@ function M.defaultSources(manifest,settings)
             if current.DefaultFrom then
                 validateName(current.DefaultFrom,'DefaultFrom')
                 assert(setting.section,'DefaultFrom requires explicit ConfigSection')
-                setting.mmdDefaultFrom=current.DefaultFrom
+                setting.ammDefaultFrom=current.DefaultFrom
                 if current.DefaultFromMap then
                     local map={}
                     for entry in (current.DefaultFromMap..';'):gmatch('(.-);') do
@@ -95,7 +95,7 @@ function M.defaultSources(manifest,settings)
                         assert(map[source]==nil,'duplicate DefaultFromMap source')
                         map[source]=number(b,'DefaultFromMap destination')
                     end
-                    setting.mmdDefaultMap=map
+                    setting.ammDefaultMap=map
                 end
             else
                 assert(not current.DefaultFromMap,'DefaultFromMap requires DefaultFrom')
@@ -124,7 +124,7 @@ function M.defaultSources(manifest,settings)
     for _,raw in ipairs(rules) do
         local setting=assert(byId[raw.Target],'unknown DefaultRule target')
         assert(setting.section,'DefaultRule requires explicit ConfigSection')
-        assert(not setting.mmdDefaultFrom,'DefaultRule and DefaultFrom cannot share a target')
+        assert(not setting.ammDefaultFrom,'DefaultRule and DefaultFrom cannot share a target')
         local fields={rule=true,Target=true,SourceSection=true,SourceKey=true,SourceDefault=true,WhenAbsent=true,WhenZero=true}
         for field in pairs(raw) do assert(fields[field],'unknown DefaultRule field '..field) end
         validateName(raw.SourceSection,'source section');validateName(raw.SourceKey,'source key')
@@ -132,9 +132,9 @@ function M.defaultSources(manifest,settings)
         if raw.SourceDefault then rule.default=number(raw.SourceDefault,'SourceDefault') end
         if raw.WhenAbsent then rule.absent=reference(raw.WhenAbsent,'WhenAbsent') end
         if raw.WhenZero then rule.zero=reference(raw.WhenZero,'WhenZero') end
-        setting.mmdDefaultRules=setting.mmdDefaultRules or {}
-        assert(#setting.mmdDefaultRules<32,'too many DefaultRules per setting')
-        table.insert(setting.mmdDefaultRules,rule)
+        setting.ammDefaultRules=setting.ammDefaultRules or {}
+        assert(#setting.ammDefaultRules<32,'too many DefaultRules per setting')
+        table.insert(setting.ammDefaultRules,rule)
     end
 end
 
@@ -188,16 +188,16 @@ function M.merge(original,settings,choices)
         targets[target]=true
         local default=setting.default
         local migrated=false
-        if existing[target]==nil and setting.mmdDefaultFrom then
-            local source=existing[targetSection..'\0'..setting.mmdDefaultFrom]
+        if existing[target]==nil and setting.ammDefaultFrom then
+            local source=existing[targetSection..'\0'..setting.ammDefaultFrom]
             if source~=nil then
                 default=number(source,'DefaultFrom source')
-                if setting.mmdDefaultMap then default=assert(setting.mmdDefaultMap[default],'unmapped DefaultFrom value') end
+                if setting.ammDefaultMap then default=assert(setting.ammDefaultMap[default],'unmapped DefaultFrom value') end
                 migrated=true
             end
         end
         if existing[target]==nil then
-            for _,rule in ipairs(setting.mmdDefaultRules or {}) do
+            for _,rule in ipairs(setting.ammDefaultRules or {}) do
                 local matches=not rule.absent or existing[rule.absent]==nil
                 if matches and rule.zero then
                     local value=existing[rule.zero]
@@ -261,8 +261,8 @@ end
 function M.commit(plan,fs)
     if plan.original==plan.content then return false end
     local path=plan.path
-    local tmp,backup=path..'.mmd-init.tmp',path..'.mmd-init.bak'
-    for _,suffix in ipairs({'.mmd-init.tmp','.mmd-init.bak','.dmm-toggle.tmp','.dmm-toggle.bak'}) do
+    local tmp,backup=path..'.amm-init.tmp',path..'.amm-init.bak'
+    for _,suffix in ipairs({'.amm-init.tmp','.amm-init.bak','.dmm-toggle.tmp','.dmm-toggle.bak'}) do
         assert(fs.read(path..suffix)==nil,'previous config transaction needs review: '..path..suffix)
     end
     assert(fs.read(path)==plan.original,'config changed before initialization')
@@ -322,51 +322,26 @@ function M.plan(provider,manifest,choices,fs,settings)
     return {path=path,original=original,content=content}
 end
 
-function M.initConfig(registry,log,fs,choices)
-    if not registry.dmmEligible then return end
-    fs=fs or M.fs
-    if not choices then
-        local ok,result=pcall(function()
-            assert(type(registry.dmmChoicesPath)=='string','DMM choices.lua path unavailable')
-            return assert(loadfile(registry.dmmChoicesPath))()
-        end)
-        if not ok then log('CONFIG_INIT_FAILED',tostring(result));return end
-        choices=result
-    end
-    if type(choices)~='table' or type(choices.parse)~='function' or type(choices.index)~='function'
-        or type(choices.open)~='function' then
-        log('CONFIG_INIT_FAILED','unsupported DMM choices API');return
-    end
-    for _,provider in ipairs(registry.configProviders or registry.providerList or {}) do
-        local ok,err=pcall(function()
-            local manifest=assert(fs.read(provider.path),'mod_settings.ini unavailable')
-            provider.dmmSettings=choices.parse(manifest:gsub('^\239\187\191',''))
-            local plan=M.plan(provider,manifest,choices,fs,provider.dmmSettings)
-            if plan then M.commit(plan,fs) end
-        end)
-        if not ok then log('CONFIG_INIT_FAILED',provider.id..': '..tostring(err)) end
-    end
-end
 -- Runs in DMM's own Lua state. Keep migration failures on DMM's existing error
 -- path, where set/reset/apply are disabled, instead of opening writable defaults.
 function M.install(choices,fs)
-    if choices.mmdConfigVersion then return false end
+    if choices.ammConfigVersion then return false end
     fs=fs or M.fs
     local parse,open=choices.parse,choices.open
     local planning=false
     choices.parse=function(content)
         local settings=parse(content)
         if settings[1] and (content:match('DefaultFrom%s*=') or content:match('DefaultFromMap%s*=') or content:match('%[DefaultRule%.')) then
-            settings[1].mmdMigrationDeclared=true
+            settings[1].ammMigrationDeclared=true
         end
         return settings
     end
     choices.open=function(provider)
-        if planning or not (provider.choices and provider.choices[1] and provider.choices[1].mmdMigrationDeclared) then
+        if planning or provider.testOnly or not (provider.choices and provider.choices[1]) then
             return open(provider)
         end
         local ok,err=pcall(function()
-            local manifest=assert(fs.read(provider.path),'migration metadata unavailable')
+            local manifest=assert(fs.read(provider.path),'configuration metadata unavailable')
             planning=true
             local planned,plan=pcall(M.plan,provider,manifest,choices,fs,provider.choices)
             planning=false
@@ -375,10 +350,10 @@ function M.install(choices,fs)
         end)
         planning=false
         local model=open(provider)
-        if not ok then model.error='Configuration migration failed; settings unavailable: '..tostring(err) end
+        if not ok then model.error='Configuration initialization failed; settings unavailable: '..tostring(err) end
         return model
     end
-    choices.mmdConfigVersion=1
+    choices.ammConfigVersion=1
     return true
 end
 return M

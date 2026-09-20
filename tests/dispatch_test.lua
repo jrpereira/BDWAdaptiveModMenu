@@ -1,7 +1,30 @@
 package.path='Scripts/?.lua;'..package.path
 package.loaded.dirty_labels={new=function() return {open=function() end,close=function() end,bind=function() end,refresh=function() return 0 end,localize=function() end,construct=function(_,fn) return fn() end} end}
-local hooks,queue,now={}, {},0
+local queue,now={},0
 local objects={}
+local lifecycle
+package.loaded.dmm_lifecycle={install=function(_,onChange)
+ local scope={enabled=true,epoch=0}
+ lifecycle={
+  open=function(selection)
+   scope.epoch=scope.epoch+1;scope.path='/Transient.CommonActivatableWidget_1';scope.address='CommonActivatableWidget_1';scope.treeAddress='HostTree'
+   onChange(scope.path,scope.epoch,selection or {path='/Transient.scroll',address='scroll'})
+  end,
+  close=function()
+   scope.epoch=scope.epoch+1;scope.path=nil;onChange(nil,scope.epoch)
+  end,
+ }
+ function scope:current() return self.path,self.epoch end
+ function scope:matches(path,epoch) return self.path==path and self.epoch==epoch end
+ function scope:ownerLive()
+  if not self.path then return false end
+  local h=objects[self.path]
+  if not h or h.visible==false or h.active==false or h.viewport==false or h.enabled==false then lifecycle.close();return false end
+  return true
+ end
+ function scope:invalidate() if self.path then lifecycle.close() end end
+ return scope
+end}
 local calls,scans,builds,ticks=0,0,0,0
 local finds=0
 local fail=false
@@ -28,19 +51,18 @@ local other=obj('CommonActivatableWidget_2')
 other.WidgetTree=obj('OtherTree')
 local scroll,wrapper,slider,relay=obj('scroll'),obj('wrapper'),obj('slider'),obj('relay')
 local browser=true
-local row={kind='slider',label='Ability',wrapper=wrapper,slider=slider,identityProviderId='P',settingId='K'}
+local row={kind='slider',label='Ability',wrapper=wrapper,slider=slider,identityProviderId='P',settingId='K',
+ dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true}}
 local pageRows={row}
 local routes={}
 for _,o in ipairs({scroll,wrapper,slider,relay}) do routes[o.name]={path='/Transient.'..o.name} end
 local snapshot={routes=routes,widgets={scroll=scroll,wrapper=wrapper,slider=slider,relay=relay},names={scroll='scroll',wrapper='wrapper',slider='slider',relay='relay'},scrolls={scroll}}
 StaticFindObject=function(path) calls=calls+1;finds=finds+1;return objects[path] end
-FindAllOf=function(name) assert(name=='WBP_MainMenu_C' or name=='WBP_PauseMenu_C');return {} end
 LoopAsync=function() error('permanent timer forbidden') end
 ExecuteWithDelay=function(delay,fn) queue[#queue+1]={time=now+delay,fn=fn} end
 ExecuteInGameThread=function(fn) fn() end
 EGameThreadMethod={EngineTick=1};EngineTickAvailable=true
-RegisterHook=function(path,pre,post) hooks[path]={pre=pre,post=post};return 1,2 end
-UnregisterHook=function(path) hooks[path]=nil end
+RegisterHook=function() error('global lifecycle hooks forbidden') end
 package.loaded.widget_discovery={valid=function(o) return o and o:IsValid() end,address=function(o) return o:GetAddress() end,
  activeTrees=function(h) scans=scans+1;if h==other or browser then return {{widgets={},names={},scrolls={}}} end;return {snapshot} end,
  routesFor=function() return snapshot.routes end,
@@ -62,10 +84,21 @@ package.loaded.key_selector={adopt=function(r) return r.decoration end,decorate=
  end
  return true end,
  tick=function() ticks=ticks+1;if fail then error('injected transient error') end;return true end}
-local registry={dmmEligible=true,providerList={{id='P',choices={{id='K',kind='slider',labels={Ability=true}}}}},byProvider={P={K={}}}}
 local diagnostics={}
-assert(require('dmm_binding').install(registry,function(event,detail) diagnostics[#diagnostics+1]=event..':'..detail end))
-local function emit(path,phase,o) hooks[path][phase]({get=function() return o or host end}) end
+assert(require('dmm_binding').install(function(event,detail) diagnostics[#diagnostics+1]=event..':'..detail end))
+local function emit(path,phase,o)
+ o=o or host
+ if path:find('SetActiveWidgetIndex',1,true) then
+  local selection={path='/Transient.scroll',address='scroll'}
+  if o.GetActiveWidgetIndex and o.GetChildAt then
+   local child=o:GetChildAt(o:GetActiveWidgetIndex())
+   selection={path=child:GetFullName():match('^%S+ (.+)$'),address=tostring(child:GetAddress())}
+  end
+  lifecycle.open(selection)
+ elseif path:find('RequestLoadSave',1,true) or path:find('NotifyLoadingScreenStarted',1,true)
+  or path:find('DeactivateWidget',1,true) or (path:find('RemoveFromParent',1,true) and o==host) then lifecycle.close()
+ elseif path:find('ActivateWidget',1,true) and o==host and not browser then lifecycle.open() end
+end
 local function untilTime(target)
  while true do
   table.sort(queue,function(a,b) return a.time<b.time end)
@@ -106,8 +139,8 @@ print('PASS lazy provider opens after browser dormancy: page event wakes dormant
 local firstScans=scans
 local firstFinds=finds
 untilTime(now+900);assert(scans==firstScans)
-assert(finds-firstFinds==18,'steady updates resolve one owner and one host, never each control')
-print('PASS fresh owner and host lookup per update, no per-control global lookup')
+assert(finds-firstFinds==9,'steady updates resolve one host, never each control')
+print('PASS fresh host lookup per update, no owner scan or per-control global lookup')
 untilTime(now+100);assert(scans==firstScans)
 print('PASS active menu: no periodic structural scans; fresh control updates only')
 local freshSlider=obj('slider')
@@ -120,7 +153,6 @@ for _,field in ipairs({'visible','enabled'}) do
  untilTime(now+100)
  local afterGuard=calls
  assert(ticks==beforeTicks and scans==beforeScans,'hidden/disabled host updated controls')
- assert(not hooks['/Script/UMG.Button:OnButtonClickedEvent'])
  untilTime(now+60000)
  assert(calls==afterGuard and #queue==0,'hidden/disabled host kept timers alive')
  host[field]=true;emit(activate,'post');untilTime(now)
@@ -144,10 +176,9 @@ emit(activate,'post',host);untilTime(now)
 assert(builds==2)
 print('PASS A -> unrelated B -> A retains original decoration')
 emit(deactivate,'pre');local stoppedCalls=calls;local stoppedScans=scans
-assert(not hooks['/Script/UMG.Button:OnButtonClickedEvent'])
 untilTime(now+60000)
 assert(calls==stoppedCalls and scans==stoppedScans and #queue==0)
-print('PASS close: obsolete callbacks drain with zero UObject calls and no rescheduling; event hooks removed')
+print('PASS close: obsolete callbacks drain with zero UObject calls and no rescheduling')
 emit(activate,'post');untilTime(now);emit(load,'pre')
 stoppedCalls=calls;untilTime(now+60000)
 assert(calls==stoppedCalls and #queue==0)
@@ -167,14 +198,14 @@ local noMenuFinds,noMenuScans=finds,scans
 for n=1,5 do emit(activate,'post',other) end
 untilTime(now+60000)
 assert(finds==noMenuFinds and scans==noMenuScans and #queue==0)
-print('PASS menu owner closure blocks unrelated activations and recurring work')
+print('PASS close callback blocks unrelated activations and recurring work')
 emit(activate,'post',owner);emit(activate,'post');untilTime(now)
 local beforeHidden=ticks
-owner.visible=false;untilTime(now+100)
+host.visible=false;untilTime(now+100)
 local afterHidden=calls;untilTime(now+60000)
 assert(ticks==beforeHidden and calls==afterHidden and #queue==0)
-owner.visible=true
-print('PASS fresh owner visibility stops work even without a close notification')
+host.visible=true
+print('PASS fresh host visibility stops work even without a close notification')
 emit(activate,'post',owner);emit(activate,'post');untilTime(now)
 fail=true;untilTime(now+500)
 assert(instance.disabled and not instance.restored)
@@ -203,7 +234,8 @@ ExecuteInGameThread=function(fn) fn() end
 emit(activate,'post',owner);emit(activate,'post');untilTime(now)
 local replacementWrapper=obj('replacementWrapper')
 local replacementSlider=obj('replacementSlider')
-row={kind='slider',label='Ability',wrapper=replacementWrapper,slider=replacementSlider,identityProviderId='P',settingId='K'}
+row={kind='slider',label='Ability',wrapper=replacementWrapper,slider=replacementSlider,identityProviderId='P',settingId='K',
+ dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true}}
 pageRows={row}
 snapshot={routes={replacementWrapper={path='/Transient.replacementWrapper'},replacementSlider={path='/Transient.replacementSlider'}},
  widgets={scroll=scroll,replacementWrapper=replacementWrapper,replacementSlider=replacementSlider},
@@ -211,9 +243,9 @@ snapshot={routes={replacementWrapper={path='/Transient.replacementWrapper'},repl
 local beforeReplacementScans,beforeReplacementBuilds=scans,builds
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now)
-assert(builds==beforeReplacementBuilds+1 and scans==beforeReplacementScans+1,
+assert(builds==beforeReplacementBuilds+1 and scans==beforeReplacementScans,
  'same-count replacement skipped targeted post-construction routes')
-print('PASS same-count row replacement builds targeted routes without a second tree scan')
+print('PASS same-count row replacement rebuilds from DMM exact-scroll callback without a tree scan')
 
 local oldBuilds=builds
 row.label='Ability *'
@@ -221,7 +253,6 @@ emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTim
 assert(builds==oldBuilds,'intact row decoration duplicated on repeated page event')
 print('PASS row-owned decoration survives discarded scope bindings and dirty labels')
 -- Model load followed by page readiness with no owner/host activation callback.
-FindAllOf=function(name) return name=='WBP_PauseMenu_C' and {owner} or {} end
 for n=1,10 do
  emit(load,'pre');untilTime(now+1000)
  row.decoration=nil -- new native row in the rebuilt page
@@ -236,8 +267,8 @@ emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now)
-assert(scans==eventScans+1 and builds==eventBuilds,'adoption/event burst repeated discovery or construction')
-print('PASS same-stack page events coalesce; adopted page needs only one traversal')
+assert(scans==eventScans and builds==eventBuilds,'adoption/event burst repeated discovery or construction')
+print('PASS same-stack DMM callbacks coalesce; adopted page needs no tree traversal')
 local directSwitcher=obj('DirectSwitcher')
 function directSwitcher:GetOuter() return host.WidgetTree end
 function directSwitcher:GetActiveWidgetIndex() return 0 end
@@ -309,18 +340,18 @@ assert(not instance.restored,'adoption failure dismantled an existing row')
 print('PASS failed adoption bookkeeping does not dismantle an existing decoration')
 
 -- Row order, descriptor order and formatting metadata order are independent.
-local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),identityProviderId='P',settingId='Mode'}
+local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),identityProviderId='P',settingId='Mode',
+ dmmSetting={id='Mode',kind='picker',values={0,1},labels={'Tap','Hold'},ammKeybind=true}}
 row.label='Same';row.decoration=nil
 pageRows={peer,row}
-registry.providerList[1].choices={{id='Mode',kind='picker'},{id='K',kind='slider'}}
-local keySetting={id='K',kind='slider',maximum=254}
-local modeSetting={id='Mode',kind='picker',labels={'Tap','Hold'}}
-registry.providerList[1].dmmSettings={keySetting,modeSetting}
-registry.byProvider.P.K={modeId='Mode'}
+local keySetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true,ammPairId='Mode'}
+local modeSetting={id='Mode',kind='picker',values={0,1},labels={'Tap','Hold'},ammKeybind=true}
+row.dmmSetting=keySetting;peer.dmmSetting=modeSetting
 local matched,paired=0,0
 package.loaded.key_selector.adopt=function() return nil end
 package.loaded.key_selector.decorate=function(r,d)
- assert(r==row and d==registry.byProvider.P.K);matched=matched+1
+ assert(r==row and d.providerId=='P' and d.settingId=='K' and d.modeId=='Mode'
+  and d.minimum==0 and d.maximum==254 and d.modeOptions==modeSetting.labels);matched=matched+1
  return {row=r,selector=relay,keyBox=wrapper}
 end
 package.loaded.key_selector.mergePair=function(i,r)
@@ -329,8 +360,6 @@ end
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(matched==1 and paired==1 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
 pageRows={row,peer}
-registry.providerList[1].choices={}
-registry.providerList[1].dmmSettings={modeSetting,keySetting}
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(matched==2 and paired==2 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
 pageRows={row,row}
@@ -342,4 +371,4 @@ assert(matched==2,'mixed-provider rows must not bind')
 peer.identityProviderId='P';row.settingId=nil
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(matched==2,'missing row identity must not fall back to text/order')
-print('PASS ID-only binding, pairing and dirty metadata with independent orders; ambiguous identities rejected')
+print('PASS row-owned DMM metadata binds by ID with independent visual order; ambiguous identities rejected')

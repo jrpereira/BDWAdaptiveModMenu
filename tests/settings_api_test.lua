@@ -1,15 +1,23 @@
 package.path='Scripts/?.lua;'..package.path
 local shared,handlers={},{}
+local rejected
 ModRef={
  GetSharedVariable=function(_,key) return shared[key] end,
  SetSharedVariable=function(_,key,value) shared[key]=value end,
 }
 RegisterConsoleCommandHandler=function(command,callback)
+ if command==rejected then return false end
  assert(not handlers[command],'duplicate native handler')
  handlers[command]=callback;return true
 end
 local api=require('settings_api')
 assert(api.version==1)
+local rejectedCommand='DMM_SettingsApplied_v1_'..('Rejected'):gsub('.',function(c) return string.format('%02x',c:byte()) end)
+rejected=rejectedCommand
+assert(not pcall(api.subscribe,'Rejected',function() end))
+assert(shared[rejectedCommand..'.owner']==nil,'failed registration retained ownership')
+rejected=nil
+assert(type(api.subscribe('Rejected',function() end))=='function','registration could not recover')
 local command='DMM_SettingsApplied_v1_'..('Provider'):gsub('.',function(c) return string.format('%02x',c:byte()) end)
 local received={}
 local unsubscribe=api.subscribe('Provider',function(event) received[#received+1]=event end)

@@ -1,3 +1,19 @@
+# 0.2.0
+
+- Capture left/right Shift, Control, Alt and Windows keys as distinct Windows virtual-key values while rejecting modifier chords.
+- Remove the unused key-code support wrapper and obsolete row-state fields.
+- Rename Mod Menu Decorator to Adaptive Mod Menu across the runtime, package, repository, documentation and release workflow.
+- Use the AdaptiveModMenu/AMM identity consistently across row metadata, DMM patch markers, backup artifacts and internal fields.
+- Retire an enabled `ModMenuDecorator` installation during AMM bootstrap by deleting its `enabled.txt`, creating `deprecated.txt` containing `AdaptiveModMenu`, and attempting to unload it when UE4SS supports cross-mod unloading.
+- Stage and verify every DMM replacement before moving the original modules to verified backups, and roll back the complete transaction if promotion fails.
+- Remove unreleased legacy decoration aliases and row-marker formats; accept only the canonical AMM configuration and metadata contracts.
+- Consolidate page retirement into the lifecycle close path and remove the redundant host-open event.
+- Register the menu click callback lazily after DMM lifecycle installation succeeds.
+- Restore ordinary provider configuration initialization through DMM's authoritative provider model.
+- Recover interrupted DMM patch transactions from verified baselines and remove incomplete staging files.
+- Keep failed Settings API handler registration from retaining a process-wide ownership claim.
+- Leave `enabled.txt` under user or mod-manager control instead of including it in release archives.
+
 # 0.1.52
 
 - Fix DMM localization module loading in the standalone decorator state by

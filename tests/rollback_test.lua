@@ -21,7 +21,8 @@ local function widget()
  function w:SetText(v) assert(type(v)=='table');self.text=v.text end
  function w:GetDesiredSize() layoutProbes=layoutProbes+1;error('mode layout must not measure text') end
  function w:Conv_StringToText(v) return {text=v} end
- for _,method in ipairs({'SetHeightOverride','SetBrushColor','SetPadding','SetHorizontalAlignment','SetVerticalAlignment','SetJustification','SetTextOverflowPolicy','SetFont','SetRenderTransformPivot','SetRenderTranslation','SetRenderScale','SetAllowGamepadKeys','SetAllowModifierKeys','SetEscapeKeys','SetBackgroundColor'}) do w[method]=function() end end
+ for _,method in ipairs({'SetHeightOverride','SetBrushColor','SetPadding','SetHorizontalAlignment','SetVerticalAlignment','SetJustification','SetTextOverflowPolicy','SetFont','SetRenderTransformPivot','SetRenderTranslation','SetRenderScale','SetAllowGamepadKeys','SetEscapeKeys','SetBackgroundColor'}) do w[method]=function() end end
+ function w:SetAllowModifierKeys(value) self.allowModifierKeys=value end
  function w:ForceLayoutPrepass() layoutProbes=layoutProbes+1;error('mode layout must not force a prepass') end
  objects['/Transient.W'..w.id]=w
  return w
@@ -56,6 +57,7 @@ assert(#r.surface.children==1 and r.slider.opacity==1 and r.valueWidget.opacity=
 print('PASS failure after attachment removes replacement and restores stock visuals')
 r=row();constructed={};local instance=assert(M.decorate(r,descriptor,function() end))
 assert(instance.keyBox.opacity==1 and r.slider.opacity==0 and r.valueWidget.opacity==0,'replacement key box must remain visible')
+assert(instance.selector.allowModifierKeys==true,'modifier-key capture was not enabled')
 print('PASS newly attached replacement parent stays opacity1 while stock controls are hidden')
 local mode={kind='picker',wrapper=widget(),nav=widget(),valueWidget=widget()}
 assert(M.mergePair(instance,mode,function() end,clicks))

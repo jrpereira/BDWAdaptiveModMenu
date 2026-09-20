@@ -1,5 +1,5 @@
 -- Public, game-agnostic client for durable DMM Apply notifications.
--- Consumers may vendor this file unchanged; the transport is private to MMD/DMM.
+-- Consumers may vendor this file unchanged; the transport is private to AMM/DMM.
 local M={version=1}
 local subscriptions={}
 local owner=tostring({}):gsub('%W','')
@@ -52,17 +52,20 @@ function M.subscribe(providerId,callback)
     assert(ModRef:GetSharedVariable(claim)==nil,'this provider Id already has a subscriber; fully restart after script reloads')
     local record={callback=callback,last=revision(ModRef:GetSharedVariable(command..'.data')) or 0}
     ModRef:SetSharedVariable(claim,owner)
-    local ok,err=pcall(RegisterConsoleCommandHandler,command,function()
+    local ok,result=pcall(RegisterConsoleCommandHandler,command,function()
         local success,message=pcall(function()
             local event=read(providerId,ModRef:GetSharedVariable(command..'.data'))
             if event.revision<=record.last then return end
             record.last=event.revision
             if record.callback then record.callback(event) end
         end)
-        if not success then print('[MMD Settings API] callback failed for '..providerId..': '..tostring(message)..'\n') end
+        if not success then print('[AMM Settings API] callback failed for '..providerId..': '..tostring(message)..'\n') end
         return true
     end)
-    if not ok then error(tostring(err),0) end
+    if not ok or result==false then
+        if ModRef:GetSharedVariable(claim)==owner then ModRef:SetSharedVariable(claim,nil) end
+        error(tostring(ok and 'console command registration rejected' or result),0)
+    end
     subscriptions[command]=record
     return setCallback(record,callback)
 end

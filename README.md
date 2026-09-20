@@ -1,8 +1,8 @@
-# Mod Menu Decorator
+# Adaptive Mod Menu
 
-Mod Menu Decorator is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
+Adaptive Mod Menu is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
 
-Keep using Mod Menu's normal configuration system. Add a little metadata, and Mod Menu Decorator turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
+Keep using Mod Menu's normal configuration system. Add a little metadata, and Adaptive Mod Menu turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
 
 The source also serves as a practical example of extending existing Unreal UI: finding existing controls, adding widgets to their owning page, and connecting custom presentation to the original settings system.
 
@@ -18,6 +18,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
 - Adds separate hover feedback for key and mode pickers, plus highlighting during key capture.
 - Supports Escape cancellation and displays unbound keys.
+- Captures left/right Shift, Control, Alt and Windows keys individually; modifier chords remain unsupported.
 - Keeps decorations attached to their owning rows and recreates them when pages rebuild.
 - Uses menu-scoped updates without a permanent gameplay polling loop.
 - Provides example configurations and source code for learning how to extend existing Unreal UI.
@@ -27,11 +28,17 @@ The source also serves as a practical example of extending existing Unreal UI: f
 
 - Menu updates use 100 ms polling, so visual feedback can lag slightly.
 - Depends on Mod Menu's structure: changes to its widget layout or lifecycle can break decoration.
-- Mapped presets require a Dawnwalker Mod Menu version with the Lua extension API; restart the game after installation.
+- The lifecycle bootstrap currently supports Dawnwalker Mod Menu 1.0.7; restart the game after it installs or updates the callback patch.
 
 ## Documentation
 
-See the [documentation on GitHub](https://github.com/jrpereira/BDWModMenuDecorator/tree/main/docs) and the [developer integration guide](https://github.com/jrpereira/BDWModMenuDecorator/blob/main/docs/DEVELOPERS.md).
+See the [documentation on GitHub](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/docs) and the [developer integration guide](https://github.com/jrpereira/BDWAdaptiveModMenu/blob/main/docs/DEVELOPERS.md).
+
+## Installation
+
+Install the package as `Mods/AdaptiveModMenu`, then enable it through your mod
+manager or UE4SS configuration. The archive does not create `enabled.txt`.
+Restart the game after installing or updating it.
 
 ## Add a key-binding control
 
@@ -78,14 +85,14 @@ Keep both settings in the same group.
 
 That's it—magic! The key picker and Tap/Hold selector appear together. No registration code is required.
 
-Your mod still implements what the binding does and interprets `0` as Tap and `1` as Hold. Mod Menu Decorator provides the GUI upgrades, not the input behavior.
+Your mod still implements what the binding does and interprets `0` as Tap and `1` as Hold. Adaptive Mod Menu provides the GUI upgrades, not the input behavior.
 
 It also pairs well with [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge), which exposes Unreal's Enhanced Input to Lua, including support for Tap/Hold bindings.
 
 ## Developer links
 
-- [Integration guide](https://github.com/jrpereira/BDWModMenuDecorator/blob/main/docs/DEVELOPERS.md)
-- [Complete example provider](https://github.com/jrpereira/BDWModMenuDecorator/tree/main/examples/ExampleMod)
-- [UI implementation](https://github.com/jrpereira/BDWModMenuDecorator/tree/main/Scripts)
+- [Integration guide](https://github.com/jrpereira/BDWAdaptiveModMenu/blob/main/docs/DEVELOPERS.md)
+- [Complete example provider](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/examples/ExampleMod)
+- [UI implementation](https://github.com/jrpereira/BDWAdaptiveModMenu/tree/main/Scripts)
 - [QuickslotsForever](https://github.com/jrpereira/BDWQuickslotsForever)
 - [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge)
