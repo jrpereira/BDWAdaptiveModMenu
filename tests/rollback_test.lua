@@ -1,6 +1,7 @@
 package.path='Scripts/?.lua;'..package.path
 local objects,serial={},0
 local construction,failAt=0,nil
+local layoutProbes=0
 local constructed={}
 local function widget()
  serial=serial+1
@@ -18,9 +19,10 @@ local function widget()
  function w:AddChildToOverlay(c) self.children[#self.children+1]=c;c.parent=self;return widget() end
  function w:RemoveFromParent() if self.parent then for i,c in ipairs(self.parent.children) do if c==self then table.remove(self.parent.children,i);break end end end;self.parent=nil end
  function w:SetText(v) assert(type(v)=='table');self.text=v.text end
- function w:GetDesiredSize() return {X=40} end
+ function w:GetDesiredSize() layoutProbes=layoutProbes+1;error('mode layout must not measure text') end
  function w:Conv_StringToText(v) return {text=v} end
- for _,method in ipairs({'SetHeightOverride','SetBrushColor','SetPadding','SetHorizontalAlignment','SetVerticalAlignment','SetJustification','SetTextOverflowPolicy','SetFont','SetRenderTransformPivot','SetRenderScale','SetAllowGamepadKeys','SetAllowModifierKeys','SetEscapeKeys','SetBackgroundColor','ForceLayoutPrepass'}) do w[method]=function() end end
+ for _,method in ipairs({'SetHeightOverride','SetBrushColor','SetPadding','SetHorizontalAlignment','SetVerticalAlignment','SetJustification','SetTextOverflowPolicy','SetFont','SetRenderTransformPivot','SetRenderTranslation','SetRenderScale','SetAllowGamepadKeys','SetAllowModifierKeys','SetEscapeKeys','SetBackgroundColor'}) do w[method]=function() end end
+ function w:ForceLayoutPrepass() layoutProbes=layoutProbes+1;error('mode layout must not force a prepass') end
  objects['/Transient.W'..w.id]=w
  return w
 end
@@ -57,6 +59,8 @@ assert(instance.keyBox.opacity==1 and r.slider.opacity==0 and r.valueWidget.opac
 print('PASS newly attached replacement parent stays opacity1 while stock controls are hidden')
 local mode={kind='picker',wrapper=widget(),nav=widget(),valueWidget=widget()}
 assert(M.mergePair(instance,mode,function() end,clicks))
+assert(r.labelBox.WidthOverride==330 and r.surfaceBox.WidthOverride==254 and r.valueBox.WidthOverride==0)
+assert(instance.pair.box.WidthOverride==150 and instance.keyBox.WidthOverride==96)
 assert(mode.wrapper.visibility==1 and #r.surface.children==3)
 for _,w in ipairs(constructed) do
  assert(w.outer==r.tree,'decoration constructed outside the row WidgetTree')
@@ -78,7 +82,7 @@ local beforeAdopt=construction
 instance.lastName='ThumbMouseButton';instance.wasSelecting=true;instance.captureName='F1'
 instance.pair.hovered=true;M.save(instance)
 local adopted=M.adopt(r,descriptor,mode,{attach=function(_,_,button,existing)
- assert(button==instance.pair.button and existing,'adoption must not add a second delegate')
+ assert(button==instance.pair.button and existing,'adoption must reuse the existing click target')
 end})
 assert(adopted and adopted~=instance and construction==beforeAdopt)
 assert(adopted.lastName=='ThumbMouseButton' and adopted.wasSelecting and adopted.captureName=='F1')
@@ -97,9 +101,9 @@ print('PASS failed pair leaves working key and stock mode row intact')
 
 
 failAt=nil;r=row();instance=assert(M.decorate(r,descriptor,function() end))
-assert(not M.mergePair(instance,mode,function() end,{attach=function() error('delegate unsupported') end}))
+assert(not M.mergePair(instance,mode,function() end,{attach=function() error('click hook unsupported') end}))
 assert(instance.pair==nil and #r.surface.children==2 and instance.keyBox.opacity==1 and mode.wrapper.visibility==0)
-print('PASS unsupported native delegate rolls back proxy and preserves visible stock mode row')
+print('PASS unavailable click hook rolls back proxy and preserves visible stock mode row')
 
 -- A failure while recording a just-attached root must stay inside the transaction.
 r=row()
@@ -140,3 +144,27 @@ assert(#r.surface.children==2 and mode.wrapper.visibility==0 and instance.stateT
 local afterRollback=assert(M.adopt(r,descriptor,mode,clicks))
 assert(not afterRollback.pair and not afterRollback.pairIndex)
 print('PASS failed pair receipt restores row-owned state so later adoption remains valid')
+
+local fixedDescriptor={providerId='P',settingId='Fixed',fixedMode='Hold',minimum=0,maximum=254}
+local fixedRow=row()
+local fixedInstance=assert(M.decorate(fixedRow,fixedDescriptor,function() end))
+assert(fixedRow.labelBox.WidthOverride==330 and fixedRow.surfaceBox.WidthOverride==254 and fixedRow.valueBox.WidthOverride==0)
+local fixedLabel=fixedInstance.keyBox.children[1].children[8].children[1]
+assert(fixedLabel.text=='Hold' and fixedLabel.outer==fixedRow.tree)
+assert(fixedLabel.opacity==0.45,'unpaired fixed label must appear unavailable')
+assert(fixedInstance.keyBox.children[1].children[8].WidthOverride==150)
+local adoptedFixed=assert(M.adopt(fixedRow,fixedDescriptor,nil,clicks))
+assert(not adoptedFixed.pair and adoptedFixed.descriptor.fixedMode=='Hold')
+assert(M.restore(fixedInstance,function() return true end))
+assert(#fixedRow.surface.children==1)
+print('PASS absent-pair fixed label ownership, adoption and rollback')
+
+local blankRow=row()
+local blank=assert(M.decorate(blankRow,{providerId='P',settingId='Blank',minimum=0,maximum=254},function() end))
+assert(blankRow.labelBox.WidthOverride==330 and blankRow.surfaceBox.WidthOverride==254 and blankRow.valueBox.WidthOverride==0)
+assert(not blank.pair and #blank.keyBox.children[1].children==7,'blank mode column must not create a control or label')
+assert(M.adopt(blankRow,blank.descriptor,nil,clicks))
+assert(M.restore(blank,function() return true end))
+assert(blankRow.labelBox.WidthOverride==100 and not blankRow.valueBox.bOverride_WidthOverride)
+print('PASS shared key/mode grid without synthetic mode controls or text measurement')
+assert(layoutProbes==0)

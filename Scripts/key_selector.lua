@@ -97,13 +97,8 @@ function M.save(instance)
     instance.savedState=saved
 end
 
-local function dirtyText(widget)
-    local text=Discovery.textOf(widget) or ''
-    return text:match('%s%*%s*$')~=nil,text
-end
-
 local function stripDirtySuffix(text)
-    return (text or ''):gsub('%s+%*%s*$','')
+    return (text or ''):gsub('^%*%s+',''):gsub('%s+%*%s*$','')
 end
 
 local function displayName(name)
@@ -191,16 +186,26 @@ function M.decorate(row,descriptor,log)
         if valid(child) and Discovery.address(child)~=Discovery.address(row.slider) then pcall(function() child:SetRenderOpacity(0) end) end
     end
 
-    -- Reserve the stock three-column row for: label | key | optional pair.
-    if descriptor.modeId then
-        row.labelBox:SetWidthOverride(330); row.surfaceBox:SetWidthOverride(96); row.valueBox:SetWidthOverride(158)
-    else
-        row.labelBox:SetWidthOverride(488); row.surfaceBox:SetWidthOverride(96); row.valueBox:SetWidthOverride(0)
-    end
+    -- Every key uses the same 584px row: label | key | gap | mode.
+    -- An absent mode leaves blank space, without creating an input widget.
+    row.labelBox:SetWidthOverride(330);row.surfaceBox:SetWidthOverride(254);row.valueBox:SetWidthOverride(0)
 
     local stateWidget=construct('/Script/UMG.TextBlock',tree)
     stateWidget:SetVisibility(1)
     need(keyOverlay:AddChildToOverlay(stateWidget),'row state slot')
+    if descriptor.fixedMode and not descriptor.modeId then
+        local fixed=construct('/Script/UMG.TextBlock',tree)
+        fixed:SetJustification(1);fixed:SetVisibility(3)
+        fixed:SetRenderOpacity(0.45)
+        pcall(function() fixed:SetFont(row.valueWidget.Font) end)
+        assert(setText(fixed,descriptor.fixedMode),'fixed mode text unavailable')
+        local box=construct('/Script/UMG.SizeBox',tree)
+        box:SetWidthOverride(150);box:SetHeightOverride(32)
+        need(box:SetContent(fixed),'fixed mode content')
+        box:SetRenderTranslation({X=104,Y=0})
+        local slot=need(keyOverlay:AddChildToOverlay(box),'fixed mode slot')
+        slot:SetHorizontalAlignment(1);slot:SetVerticalAlignment(2)
+    end
     local instance={
         stateWidget=stateWidget,descriptor=descriptor,row=row,selector=selector,keyBox=keyBox,keyFrame=keyFrame,keyInner=keyInner,keyText=keyText,keyEdges=keyEdges,
         baseLabel=row.label or descriptor.settingId,initialized=false,lastName=nil,lastBackingName=nil,wasSelecting=false,
@@ -265,27 +270,9 @@ function M.mergePair(instance,modeRow,log,clicks)
     local slot=need(instance.row.surface:AddChildToOverlay(pairBox),'pair proxy overlay slot')
     slot:SetHorizontalAlignment(3); slot:SetVerticalAlignment(2)
 
-    -- Measure every supported label after attaching the Slate widget. If desired
-    -- size is unavailable, estimate from the same font.
+    -- Fixed column width avoids layout prepasses for each option and keeps
+    -- editable, fixed and absent modes aligned across the page.
     local labels=instance.descriptor.modeOptions or {initial}
-    local maxWidth=0
-    for _,label in ipairs(labels) do
-        setText(pairText,label)
-        local ok,width=pcall(function()
-            pairText:ForceLayoutPrepass()
-            return tonumber(pairText:GetDesiredSize().X)
-        end)
-        if not ok or not width or width<=0 then
-            local fontSize=18
-            pcall(function() fontSize=tonumber(modeRow.valueWidget.Font.Size) or fontSize end)
-            width=(utf8.len(label) or #label)*fontSize*0.7
-        end
-        maxWidth=math.max(maxWidth,width)
-    end
-    setText(pairText,initial)
-    local pairWidth=math.max(36,math.ceil(maxWidth+16))
-    pairBox:SetWidthOverride(pairWidth)
-    instance.row.surfaceBox:SetWidthOverride(96+8+pairWidth)
 
     instance.pair={row=modeRow,box=pairBox,overlay=pairOverlay,frame=pairFrame,inner=pairInner,
         button=pairButton,text=pairText,valueWidget=modeRow.valueWidget,nav=modeRow.nav,lastText=initial,count=math.max(1,#labels)}
@@ -341,22 +328,16 @@ function M.adopt(row,descriptor,modeRow,clicks)
     end
 end
 
-local function updateDirtyPresentation(instance)
-    local keyDirty=dirtyText(instance.row.valueWidget)
-    local modeDirty=false
+local function updateModePresentation(instance)
     if instance.pair and valid(instance.pair.valueWidget) then
-        local dirty,text=dirtyText(instance.pair.valueWidget); modeDirty=dirty
-        local clean=stripDirtySuffix(text)
+        local text=Discovery.textOf(instance.pair.valueWidget) or ''
+        local clean=instance.modeEditable==false and instance.descriptor.fixedMode or stripDirtySuffix(text)
         if valid(instance.pair.text) and clean~=instance.pair.lastText then
             assert(setText(instance.pair.text,clean),'mode text write failed')
             instance.pair.lastText=clean
         end
     end
-    local dirty=keyDirty or modeDirty
-    if dirty~=instance.labelDirty then
-        assert(setText(instance.row.labelWidget,instance.baseLabel..(dirty and ' *' or '')),'dirty label write failed')
-        instance.labelDirty=dirty
-    end
+    -- All setting-label styling belongs to dirty_labels, including paired modes.
 end
 
 local function syncSelector(instance,name)
@@ -387,6 +368,23 @@ function M.tick(instance,log)
     if not valid(instance.row.wrapper) then return false end
     local okParent,parent=pcall(function() return instance.row.wrapper:GetParent() end)
     if not okParent or not valid(parent) then return false end
+    if instance.descriptor.fixedMode and instance.pair then
+        if not valid(instance.row.modeState) then instance.pendingClicks=0;return false end
+        local state=Discovery.textOf(instance.row.modeState)
+        if state~='MMD_MODE\nfixed' and state~='MMD_MODE\neditable' then instance.pendingClicks=0;return false end
+        local editable=state=='MMD_MODE\neditable'
+        if instance.modeEditable~=editable then
+            instance.pendingClicks=0
+            instance.pair.button:SetIsEnabled(editable)
+            instance.pair.text:SetRenderOpacity(editable and 1 or 0.45)
+            instance.modeEditable=editable
+        end
+        if not editable then instance.pendingClicks=0 end
+        -- DMM can reveal its backing row when logical visibility changes.
+        -- Collapse it only after our paired control exists successfully.
+        local source=instance.pair.row and instance.pair.row.wrapper
+        if valid(source) and source:GetVisibility()~=1 then source:SetVisibility(1) end
+    end
 
     -- Pointer feedback belongs to the key hit target, not the whole stock row.
     -- Capture styling wins until capture ends, even if the pointer moves away.
@@ -400,7 +398,7 @@ function M.tick(instance,log)
     -- Keep the stock row highlight and key-capture styling independently owned.
     local pair=instance.pair
     if pair and valid(pair.button) and valid(pair.inner) then
-        local hovered=pair.button:IsHovered()==true
+        local hovered=instance.modeEditable~=false and pair.button:IsHovered()==true
         if hovered~=pair.hovered then
             pair.inner:SetBrushColor(hovered
                 and {R=0.95,G=0.63,B=0.08,A=0.22}
@@ -472,7 +470,7 @@ function M.tick(instance,log)
         syncSelector(instance,backingName)
     end
 
-    if instance.pair and valid(instance.pair.nav) then
+    if instance.modeEditable~=false and instance.pair and valid(instance.pair.nav) then
         local count=instance.pendingClicks or 0
         if count>0 then
             local current=tonumber(instance.pair.nav:GetValue()) or 0
@@ -490,7 +488,7 @@ function M.tick(instance,log)
     -- must never replay a key merely because its previous display update failed.
     M.save(instance)
     if not result then return result end
-    updateDirtyPresentation(instance)
+    updateModePresentation(instance)
     if instance and instance.keyDisplayText and instance.keyDisplayText~=instance.renderedKeyText then
         assert(setText(instance.keyText,instance.keyDisplayText),'key text write failed')
         instance.renderedKeyText=instance.keyDisplayText

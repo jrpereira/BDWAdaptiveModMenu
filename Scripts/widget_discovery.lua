@@ -15,6 +15,7 @@ local function isA(widget,name)
     end
     return widget:IsA(class)
 end
+function M.isTextBlock(widget) return valid(widget) and isA(widget,'TextBlock') end
 local textLibrary
 local knownClasses={'ScrollBox','SizeBox','HorizontalBox','Overlay','Button','TextBlock','Slider','WidgetTree'}
 local function className(o)
@@ -43,6 +44,9 @@ local function textOf(widget)
     return ok and tostring(v) or nil
 end
 M.textOf=textOf
+function M.cleanLabel(text)
+    return (text or ''):gsub('^%*%s+',''):gsub('%s+%*%s*$','')
+end
 local function address(o) local ok,v=pcall(function() return o:GetAddress() end); return ok and tostring(v) or nil end
 M.address=address
 
@@ -74,7 +78,7 @@ end
 
 function M.choiceRowFromWrapper(wrapper)
     if className(wrapper)~='SizeBox' then return nil end
-    local shell=contentOf(wrapper); if className(shell)~='Overlay' or childCount(shell)~=2 then return nil end
+    local shell=contentOf(wrapper); if className(shell)~='Overlay' or childCount(shell)<2 then return nil end
     local nav,content=childAt(shell,0),childAt(shell,1); if className(nav)~='Slider' then return nil end
     if className(content)=='Overlay' then
         local lane=nil
@@ -92,7 +96,9 @@ function M.choiceRowFromWrapper(wrapper)
         local lane=contentOf(content); if className(lane)~='HorizontalBox' or childCount(lane)~=2 then return nil end
         local labelBox=childAt(lane,0); if className(labelBox)~='SizeBox' then return nil end
         local labelWidget=contentOf(labelBox); if className(labelWidget)~='TextBlock' then return nil end
-        return {kind='toggle',wrapper=wrapper,shell=shell,nav=nav,button=content,lane=lane,labelWidget=labelWidget,label=textOf(labelWidget)}
+        local valueBox=childAt(lane,1); if className(valueBox)~='SizeBox' then return nil end
+        local valueWidget=contentOf(valueBox); if className(valueWidget)~='TextBlock' then return nil end
+        return {kind='toggle',wrapper=wrapper,shell=shell,nav=nav,button=content,lane=lane,labelWidget=labelWidget,label=textOf(labelWidget),valueWidget=valueWidget}
     end
 end
 
@@ -120,9 +126,38 @@ function M.rowsFromScroll(scroll)
     if className(scroll)~='ScrollBox' then return nil end
     local rows={}
     for i=0,childCount(scroll)-1 do
-        local child=childAt(scroll,i); local row=M.rowFromWrapper(child)
-        if row then rows[#rows+1]=row end
+        local child=childAt(scroll,i)
+        local content=contentOf(child)
+        if M.isTextBlock(content) then
+            local path=(textOf(content) or ''):match('^MMD_HEADER_ROW\n(.+)$')
+            if path then
+                local promoted=StaticFindObject(path)
+                if valid(promoted) then child=promoted end
+            end
+        end
+        local row=M.rowFromWrapper(child)
+        if row then
+            local shell=contentOf(child)
+            for n=0,childCount(shell)-1 do
+                local marker=childAt(shell,n)
+                if valid(marker) and isA(marker,'TextBlock') then
+                    local text=textOf(marker) or ''
+                    local index,provider,id=text:match('^MMD_SETTING_INDEX\n(%d+)\n([^\n]+)\n([^\n]+)$')
+                    if index then
+                        local function decode(value) return (value:gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end)) end
+                        row.settingIndex=tonumber(index)
+                        row.identityProviderId=decode(provider);row.settingId=decode(id)
+                    else
+                        row.settingIndex=tonumber(text:match('^MMD_SETTING_INDEX\n(%d+)$')) or row.settingIndex
+                    end
+                    if text:match('^MMD_MODE\n') then row.modeState=marker end
+                end
+            end
+            rows[#rows+1]=row
+        end
     end
+    -- Preserve visual traversal order. Binding uses provider/setting IDs,
+    -- never a reconstructed ordering from the independently parsed metadata.
     return rows
 end
 -- The exact host was activated through the lifecycle hook. No global object
@@ -160,6 +195,50 @@ function M.activeTrees(host,allowed)
     walk(root,0)
     if complete and allowed() then return {snapshot} end
     return {}
+end
+-- Build fresh-child routes only for controls already identified by the DMM
+-- page event. This avoids walking unrelated help, footer and decoration trees.
+function M.routesFor(host,objects,allowed)
+    if not allowed() or not valid(host) then return nil end
+    local tree=host.WidgetTree
+    if not allowed() or not valid(tree) then return nil end
+    local root=tree.RootWidget
+    if not allowed() or not valid(root) then return nil end
+    local rootAddress=address(root)
+    local routes={}
+    local building={}
+    local function route(widget,depth)
+        if not allowed() or not valid(widget) or depth>40 then return nil end
+        local addr=address(widget)
+        if not addr then return nil end
+        if routes[addr] then return routes[addr] end
+        if building[addr] then return nil end
+        building[addr]=true
+        local result
+        if addr==rootAddress then
+            result={address=addr,name=widget:GetFName():ToString()}
+        else
+            local ok,parent=pcall(function() return widget:GetParent() end)
+            if ok and valid(parent) then
+                local parentRoute=route(parent,depth+1)
+                if parentRoute then
+                    local index
+                    for i=0,childCount(parent)-1 do
+                        local child=childAt(parent,i)
+                        if valid(child) and address(child)==addr then index=i;break end
+                    end
+                    if index then result={parent=parentRoute,index=index,address=addr,name=widget:GetFName():ToString()} end
+                end
+            end
+        end
+        building[addr]=nil
+        if result then routes[addr]=result end
+        return result
+    end
+    for _,widget in ipairs(objects or {}) do
+        if not route(widget,0) then return nil end
+    end
+    return routes
 end
 -- Resolve through current widget ownership, never through retained native wrappers.
 -- Routes contain only primitive identities/indices. The cache lives for one update.

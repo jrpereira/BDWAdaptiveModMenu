@@ -1,9 +1,12 @@
 package.path='Scripts/?.lua;'..package.path
+package.loaded.dirty_labels={new=function() return {open=function() end,close=function() end,bind=function() end,refresh=function() return 0 end,localize=function() end,construct=function(_,fn) return fn() end} end}
 local hooks,queue,now={}, {},0
 local objects={}
 local calls,scans,builds,ticks=0,0,0,0
 local finds=0
 local fail=false
+Key={LEFT_MOUSE_BUTTON=1}
+RegisterKeyBind=function(_,fn) pointerCallback=fn end
 local function obj(name)
  local o={name=name}
  function o:IsValid() calls=calls+1;return true end
@@ -25,7 +28,8 @@ local other=obj('CommonActivatableWidget_2')
 other.WidgetTree=obj('OtherTree')
 local scroll,wrapper,slider,relay=obj('scroll'),obj('wrapper'),obj('slider'),obj('relay')
 local browser=true
-local row={kind='slider',label='Ability',wrapper=wrapper,slider=slider}
+local row={kind='slider',label='Ability',wrapper=wrapper,slider=slider,identityProviderId='P',settingId='K'}
+local pageRows={row}
 local routes={}
 for _,o in ipairs({scroll,wrapper,slider,relay}) do routes[o.name]={path='/Transient.'..o.name} end
 local snapshot={routes=routes,widgets={scroll=scroll,wrapper=wrapper,slider=slider,relay=relay},names={scroll='scroll',wrapper='wrapper',slider='slider',relay='relay'},scrolls={scroll}}
@@ -39,8 +43,9 @@ RegisterHook=function(path,pre,post) hooks[path]={pre=pre,post=post};return 1,2 
 UnregisterHook=function(path) hooks[path]=nil end
 package.loaded.widget_discovery={valid=function(o) return o and o:IsValid() end,address=function(o) return o:GetAddress() end,
  activeTrees=function(h) scans=scans+1;if h==other or browser then return {{widgets={},names={},scrolls={}}} end;return {snapshot} end,
+ routesFor=function() return snapshot.routes end,
  routeResolver=function() return function(route) return route and objects[route.path] end end,
- rowsFromScroll=function() return {row} end}
+ rowsFromScroll=function(target) if target==scroll then return pageRows end end}
 local instance
 package.loaded.key_selector={adopt=function(r) return r.decoration end,decorate=function(r,d)
  builds=builds+1
@@ -87,6 +92,16 @@ function switcher:GetOuter() return host.WidgetTree end
 browser=false
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now);assert(builds==1)
+row.identityProviderId='P';row.settingId='K';row.label='Repeated or localized label'
+local priorTicks=ticks
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(ticks>priorTicks,'explicit row identity must not depend on label text')
+row.settingId='WrongSetting';priorTicks=ticks
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(ticks==priorTicks,'foreign setting identity must not fall back to label matching')
+row.identityProviderId='P';row.settingId='K';row.label='Ability'
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+print('PASS explicit row identity accepts repeated/localized labels and rejects mismatched settings')
 print('PASS lazy provider opens after browser dormancy: page event wakes dormant host without timers')
 local firstScans=scans
 local firstFinds=finds
@@ -105,7 +120,7 @@ for _,field in ipairs({'visible','enabled'}) do
  untilTime(now+100)
  local afterGuard=calls
  assert(ticks==beforeTicks and scans==beforeScans,'hidden/disabled host updated controls')
- assert(not hooks['/Script/UMG.Widget:ForceLayoutPrepass'])
+ assert(not hooks['/Script/UMG.Button:OnButtonClickedEvent'])
  untilTime(now+60000)
  assert(calls==afterGuard and #queue==0,'hidden/disabled host kept timers alive')
  host[field]=true;emit(activate,'post');untilTime(now)
@@ -129,7 +144,7 @@ emit(activate,'post',host);untilTime(now)
 assert(builds==2)
 print('PASS A -> unrelated B -> A retains original decoration')
 emit(deactivate,'pre');local stoppedCalls=calls;local stoppedScans=scans
-assert(not hooks['/Script/UMG.Widget:ForceLayoutPrepass'])
+assert(not hooks['/Script/UMG.Button:OnButtonClickedEvent'])
 untilTime(now+60000)
 assert(calls==stoppedCalls and scans==stoppedScans and #queue==0)
 print('PASS close: obsolete callbacks drain with zero UObject calls and no rescheduling; event hooks removed')
@@ -188,16 +203,17 @@ ExecuteInGameThread=function(fn) fn() end
 emit(activate,'post',owner);emit(activate,'post');untilTime(now)
 local replacementWrapper=obj('replacementWrapper')
 local replacementSlider=obj('replacementSlider')
-row={kind='slider',label='Ability',wrapper=replacementWrapper,slider=replacementSlider}
+row={kind='slider',label='Ability',wrapper=replacementWrapper,slider=replacementSlider,identityProviderId='P',settingId='K'}
+pageRows={row}
 snapshot={routes={replacementWrapper={path='/Transient.replacementWrapper'},replacementSlider={path='/Transient.replacementSlider'}},
  widgets={scroll=scroll,replacementWrapper=replacementWrapper,replacementSlider=replacementSlider},
  names={scroll='scroll',replacementWrapper='replacementWrapper',replacementSlider='replacementSlider'},scrolls={scroll}}
 local beforeReplacementScans,beforeReplacementBuilds=scans,builds
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now)
-assert(builds==beforeReplacementBuilds+1 and scans==beforeReplacementScans+2,
- 'same-count replacement skipped post-construction route scan')
-print('PASS same-count row replacement rebuilds routes for new controls')
+assert(builds==beforeReplacementBuilds+1 and scans==beforeReplacementScans+1,
+ 'same-count replacement skipped targeted post-construction routes')
+print('PASS same-count row replacement builds targeted routes without a second tree scan')
 
 local oldBuilds=builds
 row.label='Ability *'
@@ -222,12 +238,20 @@ emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher)
 untilTime(now)
 assert(scans==eventScans+1 and builds==eventBuilds,'adoption/event burst repeated discovery or construction')
 print('PASS same-stack page events coalesce; adopted page needs only one traversal')
-local healthyTick=package.loaded.key_selector.tick
+local directSwitcher=obj('DirectSwitcher')
+function directSwitcher:GetOuter() return host.WidgetTree end
+function directSwitcher:GetActiveWidgetIndex() return 0 end
+function directSwitcher:GetChildAt(index) assert(index==0);return scroll end
+local directScans,directBuilds=scans,builds
 fail=false
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',directSwitcher);untilTime(now)
+assert(scans==directScans and builds==directBuilds,'exact selected ScrollBox fell back to a full tree scan')
+print('PASS page selection binds the exact provider ScrollBox with zero full-tree scans')
+local healthyTick=package.loaded.key_selector.tick
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 package.loaded.key_selector.tick=function() return false end
 untilTime(now+200)
-assert(instance.failures==2 and not instance.disabled)
+assert(instance.failures==2 and not instance.disabled,'failures='..tostring(instance.failures)..' disabled='..tostring(instance.disabled))
 package.loaded.key_selector.tick=healthyTick
 untilTime(now+100)
 assert(instance.failures==0 and not instance.disabled,'successful update did not reset consecutive failures')
@@ -258,7 +282,11 @@ fail=false
 row.decoration=nil
 package.loaded.key_selector.decorate=function() return nil,'injected construction cause' end
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
-assert(diagnostics[#diagnostics]:find('P.K: injected construction cause',1,true))
+local constructionDiagnostic=false
+for _,entry in ipairs(diagnostics) do
+ if entry:find('P.K: injected construction cause',1,true) then constructionDiagnostic=true end
+end
+assert(constructionDiagnostic)
 print('PASS construction error second return retained with setting identity')
 
 package.loaded.key_selector.decorate=function(r)
@@ -268,10 +296,50 @@ package.loaded.key_selector.decorate=function(r)
 end
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(instance.restored,'binding setup failure left a constructed row without updates or stock controls')
-assert(diagnostics[#diagnostics]:find('injected ledger failure',1,true))
+local ledgerDiagnostic=false
+for _,entry in ipairs(diagnostics) do
+ if entry:find('injected ledger failure',1,true) then ledgerDiagnostic=true end
+end
+assert(ledgerDiagnostic)
 print('PASS new-row ledger failure rolls back construction before reporting failure')
 
 instance.restored=nil;instance.undo=nil;row.decoration=instance
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(not instance.restored,'adoption failure dismantled an existing row')
 print('PASS failed adoption bookkeeping does not dismantle an existing decoration')
+
+-- Row order, descriptor order and formatting metadata order are independent.
+local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),identityProviderId='P',settingId='Mode'}
+row.label='Same';row.decoration=nil
+pageRows={peer,row}
+registry.providerList[1].choices={{id='Mode',kind='picker'},{id='K',kind='slider'}}
+local keySetting={id='K',kind='slider',maximum=254}
+local modeSetting={id='Mode',kind='picker',labels={'Tap','Hold'}}
+registry.providerList[1].dmmSettings={keySetting,modeSetting}
+registry.byProvider.P.K={modeId='Mode'}
+local matched,paired=0,0
+package.loaded.key_selector.adopt=function() return nil end
+package.loaded.key_selector.decorate=function(r,d)
+ assert(r==row and d==registry.byProvider.P.K);matched=matched+1
+ return {row=r,selector=relay,keyBox=wrapper}
+end
+package.loaded.key_selector.mergePair=function(i,r)
+ assert(i.row==row and r==peer);paired=paired+1;return true
+end
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(matched==1 and paired==1 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
+pageRows={row,peer}
+registry.providerList[1].choices={}
+registry.providerList[1].dmmSettings={modeSetting,keySetting}
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(matched==2 and paired==2 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
+pageRows={row,row}
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(matched==2,'duplicate row identity must not bind')
+pageRows={row,peer};peer.identityProviderId='Other'
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(matched==2,'mixed-provider rows must not bind')
+peer.identityProviderId='P';row.settingId=nil
+emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
+assert(matched==2,'missing row identity must not fall back to text/order')
+print('PASS ID-only binding, pairing and dirty metadata with independent orders; ambiguous identities rejected')

@@ -32,11 +32,102 @@ Mods/
     Scripts/main.lua
 ```
 
-Supply real config keys on first installation; do not rely on metadata defaults to
-create keys in an existing config. Restart after adding/changing manifest metadata:
-discovery runs at decorator startup and is not a manifest hot-reload API.
+At startup, `initConfig` loads defaults from `mod_settings.ini` and overlays the
+existing configuration values unconditionally. It creates a missing INI or adds
+missing assignments while preserving existing values, comments and unrelated keys.
+This runs for direct provider folders, including disabled providers exposed by DMM,
+even when no settings request decoration. Archived/nested providers are excluded.
+
+DMM's installed schema parser validates the schema and the resulting configuration
+before saving. Invalid or ambiguous input is reported without substituting defaults
+for user values. DMM settings are numeric: `0` is retained as off/unbound; a literal
+`false` or empty numeric value is preserved but rejected by DMM validation.
+One schema-declared INI path per provider is supported, including existing nested
+directories; initialization does not create directories. Existing complete files
+are not rewritten. Interrupted transactions retain recovery files and are reported
+for review rather than overwritten on the next startup.
+
+Initialization completes synchronously before decoration hooks, while DMM reads
+configuration when the user opens a provider's settings page. It adds no polling
+or gameplay work. Your mod must still handle its own startup defaults if it loads
+before ModMenuDecorator. Restart after adding/changing manifest metadata; this is
+not a manifest or configuration hot-reload API. DMM source is not modified.
 
 ## Minimal integration
+
+### Dirty-label presentation
+
+While the settings menu is open, MMD moves DMM's value-side dirty marker to the
+left of the setting label and italicizes the label. A separate, non-interactive
+TextBlock occupies the existing left gutter; the label text and layout stay unchanged. It uses an italic face from
+the existing font when available, otherwise Slate font skew. Clean values restore
+the original face and skew. This covers recognized sliders, pickers and toggles,
+including settings without key decorations. Key and paired mode changes share
+the visible key row's indicator. Schema-declared literal stars are not removed.
+
+The text-change hook is removed when the menu closes or a load retires it. Dirty
+presentation state is stored in a collapsed child owned by the row. No extra
+polling loop or configuration writes are used for styling.
+
+MMD's internal menu adapter exposes `showDirty(boolean)` and
+`setValue(providerId, settingId, value)` through `dmm_binding`. Values are logical
+schema values, not normalized slider positions. For programmatic changes:
+
+```lua
+local previous = Binding.showDirty(false)
+local ok, err = Binding.setValue(providerId, settingId, value)
+Binding.showDirty(previous)
+assert(ok, err)
+```
+
+The active row records suppression at the value change, so re-enabling display
+before DMM processes the control does not reveal that change's marker. Subsequent
+manual changes display normally. Apply/Restore still use DMM's unchanged pending
+and committed values; clean signals clear suppression. This is an internal MMD
+API, not a cross-mod Lua API or a mapped-preset implementation. DMM consumes widget
+changes one at a time; callers must not assume these methods provide atomic batch
+edits or that setting several controls at once applies an entire preset.
+
+### Mapped presets
+
+MMD expands mapped presets inside DMM's own pending model. Declare a picker with
+`CustomValue`, a pipe-separated `MappedPresetTargets` list of setting IDs, and
+semicolon-separated `MappedPresetValues` entries. Each entry has the form
+`presetValue:targetValue|targetValue`, in target order. For example:
+
+```ini
+MappedPresetTargets=Ability1|Ability1Mode
+MappedPresetValues=1:82|0;2:49|1
+CustomValue=0
+```
+
+The picker must declare values `0|1|2` in this example. Every non-Custom value
+needs a complete mapping. Targets may be sliders, pickers or toggles; values must
+fit their declared ranges, steps or choices. Overlapping and nested presets are
+rejected, including overlap with DMM's ordinary `PresetTargets`.
+
+Selecting a preset synchronously updates all targets before DMM refreshes or
+applies. Preset-derived target changes hide their dirty indicators while retaining
+the actual pending/committed differences. A manual target edit selects Custom and
+marks only that target against the selected preset's visual baseline. Returning
+all targets to a named preset selects it automatically. Custom cannot be chosen
+directly. Apply and Restore clear the visual baseline.
+Apply and Restore remain DMM operations. Opening an inconsistent saved preset
+preserves its keys and changes the pending picker to Custom.
+
+Dawnwalker Mod Menu loads `Scripts/dmm_extension.lua` from enabled direct mods at
+startup and passes its choices, controls and pages modules through extension API
+version 1. MMD installs its mapped-preset, presentation and migration wrappers in
+that Lua state. No native DLL, additional runtime, timer or DMM file edit is used.
+Install both mods before starting the game; loading MMD after DMM has started does
+not retrofit the existing page. Restart after installing, removing or updating an
+extension.
+
+CI syntax-checks and exercises the extension and UI modules as Lua, then builds the
+allowlisted archive. Mocked tests cannot substitute for testing the supported DMM
+version in-game.
+
+### Key controls
 
 Copy the complete [example manifest](../examples/ExampleMod/mod_settings.ini) into
 your provider and adapt its IDs, labels, config paths and defaults. The matching
@@ -49,7 +140,7 @@ The key row's essential fields are:
 [Setting.Interact]
 Id = Interact
 Type = integer
-Decoration = keybind
+DecoType = keybind
 Label = Interact key
 Group = Controls
 ConfigFile = config.ini
@@ -72,13 +163,13 @@ silently substituted.
 
 ## Pairing a mode picker
 
-Add a picker with `Id = InteractMode` and **its own** `Decoration = keybind`:
+Add a picker with `Id = InteractMode` and **its own** `DecoType = keybind`:
 
 ```ini
 [Setting.InteractMode]
 Id = InteractMode
 Type = picker
-Decoration = keybind
+DecoType = keybind
 Label = Interact mode
 Group = Controls
 ConfigFile = config.ini
@@ -144,9 +235,9 @@ Control synchronization remains at 100 ms within that scope and stops when no us
 from the current host root rather than repeated global lookups for each control. Each eligible update performs exact owner/host lookups; there is no global widget enumeration
 or permanently running discovery timer. Closing/loading revokes deferred work;
 obsolete queued callbacks drain without UObject access or rescheduling.
-Picker clicks use a menu-scoped OnClicked relay on owned proxy buttons and are queued
-until the next update. No press-state sampling is used. Basic native click delivery passed earlier checks; current lifecycle integration still needs
-in-game validation; failed event attachment leaves the stock mode row available.
+Picker clicks use one UE4SS left-mouse callback that queues primitive Lua state. The existing menu-scoped game-thread update delivers queued clicks only to the currently hovered owned proxy button.
+No UObject is accessed by the key callback and no press-state sampling is used. Native click delivery and lifecycle integration still need
+in-game validation; unavailable pointer input leaves the stock mode row available.
 
 Before releasing your integration, test a key-only change, a mode-only change,
 the dirty marker and Apply, persistence after reopening/restarting, clean and
@@ -166,7 +257,7 @@ exclusive Delete input route is still required before advertising this shortcut.
 
 Decoration requires a visible, active main/pause-menu owner and fresh owner validation on each update. If activation was missed, a host/page event can recover the owner using the same two owner classes as DMM. Loading cancels queued work without a sticky wait-for-reactivation flag. A lifecycle callback exception cancels the current scope; the next valid event can recover. Hook installation failure still disables the mod. Actionable errors include the setting and original failure reason; disabled controls report once.
 
-A collapsed TextBlock inside the key overlay stores versioned scalar control state. Every created widget uses the row's WidgetTree as outer and attaches beneath its surface. Row presence determines decoration presence. Reopening an intact page adopts the existing subtree and reconnects click routing without adding another native delegate. A new row has no marker and receives a new decoration. No persistent host/row decorated registry or partial-child repair scan exists.
+A collapsed TextBlock inside the key overlay stores versioned scalar control state. Every created widget uses the row's WidgetTree as outer and attaches beneath its surface. Row presence determines decoration presence. Reopening an intact page adopts the existing subtree and reconnects the existing function-hook routing. A new row has no marker and receives a new decoration. No persistent host/row decorated registry or partial-child repair scan exists.
 
 Lua bindings and primitive traversal routes are temporary, discarded on scope changes. They support active input updates and never determine whether a row has been decorated. Capture/presentation state is compared with the last successfully saved scalars in the temporary binding; unchanged state is neither serialized nor written. Persistent state remains on the row. Pending click delivery is transient and cleared on scope changes. Construction failures roll back mutations; repeated update failures stop that control until the next page event rather than dismantling its decoration. Attached widgets leave the page with their row; final UObject reclamation follows Unreal garbage collection.
 
@@ -175,3 +266,176 @@ Lua bindings and primitive traversal routes are temporary, discarded on scope ch
 UE4SS Bridge – Live Lua MCP (littleRabbit94/ue4ss-bridge, Nexus mod 198) is an optional development/debugging helper, separate from UE4SSLuaEventBridge. ModMenuDecorator must work fully with UEBridge absent or disabled. Do not add production imports, IPC calls, startup checks, bundled helper files, installer requirements, CI/release requirements, or features that depend on it. Keep any diagnostic scripts and setup instructions separate from production artifacts and explicitly optional.
 
 Use only bounded, targeted inspections and before/after snapshots to test concrete hypotheses about settings widget identity, key/Mode selection, DMM dirty/Apply state, and menu lifecycle. Do not start automatic watches or hooks. Ask the user before taking computer control; helper availability is not permission to interact with the game. Preserve configuration. Disable the helper for performance baselines and verify final fixes with it absent or disabled.
+
+## Apply notifications
+
+`Scripts/settings_api.lua` is MMD's versioned, game-agnostic consumer API. A mod
+may vendor that file unchanged and subscribe to its own DMM provider ID:
+
+```lua
+local Settings=require('settings_api')
+local unsubscribe=Settings.subscribe('ExampleMod',function(event)
+    -- event.providerId, event.revision, event.values and event.changes
+end)
+```
+
+DMM publishes only after a successful, durable Apply. Delivery is event-driven;
+there is no file watcher or polling. Revisions are delivered at most once in a
+Lua state. `values` contains the complete applied numeric setting map and
+`changes` contains `{old=...,new=...}` only for changed IDs. Treat the event and
+its nested tables as read-only. Callback failure cannot turn a completed save
+into an Apply failure. Calling the returned function stops delivery to that
+callback.
+
+## Presentation metadata
+
+`DecoType=tab` renders an ordinary picker as right-aligned choices on the
+same row as its label. It supports two to eight choices and retains DMM's
+keyboard/controller navigation, pending model and Apply/Restore behavior.
+
+`DecoLevel=0` inherits the existing font. Levels 1–6 use sizes
+22, 16, 15, 14, 12 and 11 respectively. Level1 uses the title color;
+Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
+muted text, with Level5 at 85% opacity. The property applies to setting labels
+and Category headings without changing control types.
+
+A setting at typography level 1 replaces the default mod title. The original
+control and its label become the header, preserving DMM navigation and values.
+This supports toggles, pickers and sliders; at most one setting per provider may
+use level 1. No separate header flag is required. Providers without a level-one
+setting keep the default title. Mods still implement their settings' behavior.
+
+Categories can declare `DecoHelp` to show Level5 explanatory text under
+the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.
+
+Categories can also share a parent heading without flattening that heading into
+each category label:
+
+```ini
+[Category.PrimaryWheel]
+DecoParent=Interaction: Independent
+DecoParentLevel=2
+DecoLevel=3
+
+[Category.SecondaryWheel]
+DecoParent=Interaction: Independent
+DecoParentLevel=2
+DecoLevel=3
+
+[Category.SelectiveBindings]
+DecoParent=Interaction: Selective
+DecoParentLevel=2
+DecoLevel=3
+```
+
+`DecoParent` is the displayed parent label. Categories with the same exact
+label share one parent heading and retain their own category headings as
+subgroups. `DecoParentLevel` accepts levels 0–6 and defaults to 2; every
+category sharing a parent must use the same level. Parent headings do not add
+visibility rules. A provider that wants persistent Independent and Selective
+sections should leave their categories unconditional. If every subgroup under
+a parent is hidden by DMM, MMD hides the otherwise empty parent heading.
+
+For labels that depend on another picker or toggle, settings and categories
+can declare:
+
+```ini
+DecoLabelWhen=PrimaryWheel
+DecoLabels=0:Secondary Wheel;1:Primary Wheel
+```
+
+Unlisted source values retain the original label. Category ordering is opt-in:
+
+```ini
+DecoOrderWhen=PrimaryWheel
+DecoOrders=0:20;1:10
+```
+
+Only opted-in categories exchange positions, in ascending rank order. Other
+categories remain in their original positions. Rows retain their setting IDs,
+config keys and children. Reordering occurs on a relevant value change, using
+DMM's existing menu refresh; no additional timer is created.
+
+## Migrating missing defaults
+
+`DefaultFrom=OldConfigKey` copies an existing value in the same `ConfigFile` and
+explicit `ConfigSection` only when the destination key is absent. The source
+must satisfy the destination range/choices and step. An invalid source prevents
+initialization instead of silently overwriting it. An explicit destination value
+always wins; an absent source uses the ordinary `Default`. Migration reads only
+existing values, so it does not depend on setting order or follow default chains.
+
+`DefaultFromMap=0:1;1:2` optionally converts the copied number through a finite
+map. An existing source must have a mapped entry. No expressions are evaluated.
+
+For cross-section or conditional copies, use ordered sections:
+
+```ini
+[DefaultRule.PositionFromLegacy]
+Target = Position
+SourceSection = Legacy Layout
+SourceKey = UpperX
+SourceDefault = 40
+WhenAbsent = General/Role
+WhenZero = Legacy Layout/Swap
+
+[DefaultRule.PositionFallback]
+Target = Position
+SourceSection = Legacy Layout
+SourceKey = LowerX
+SourceDefault = 20
+```
+
+`Target` is a setting ID with an explicit `ConfigSection`. Rule section names
+must be unique. Rules run in manifest order, at most 32 per target; the first
+matching rule with an available source supplies the missing value. A rule without
+`SourceDefault` is skipped when its source is absent. If no rule supplies a value,
+the setting's ordinary `Default` applies. A target cannot also use `DefaultFrom`.
+
+Both optional conditions must match. `WhenAbsent=Section/Key` tests whether the
+key existed in the original file. `WhenZero=Section/Key` accepts finite integers;
+zero or an absent key matches, while any nonzero integer does not. It is evaluated
+only after `WhenAbsent` matches. References are exact and case-sensitive, and
+read only the same configuration file's original snapshot. Explicit destination
+values bypass all source and condition evaluation. Consumed source values must
+satisfy the destination range, choices and step; malformed values fail instead
+of being clamped or replaced. Duplicate config sections/keys are rejected.
+
+Migration retains original bytes and unknown keys, adding only missing declared
+destinations in one file transaction. Providers declaring migrations also pass
+through an owned DMM open adapter: a failed migration sets DMM's normal error
+state and disables editing/Apply until the problem is corrected. Other providers
+use the original open path. No DMM source files are modified.
+
+## Fixed mode labels
+
+A keybind can declare `DecoMode=Tap` or `DecoMode=Hold`. This supplies a fixed,
+noninteractive label when its paired mode setting is absent or logically hidden
+by DMM's `VisibleWhen` / `VisibleValues`. When the paired mode is logically
+visible, the normal editable mode picker returns with its existing value.
+
+Visibility comes from DMM's model, not the source widget's collapsed state.
+No mode/config value changes to match the fixed label. In particular, Hold is
+only display text; a mod can implement immediate physical hold behavior without
+a Tap/Hold threshold. This metadata does not implement input behavior.
+
+```ini
+[Setting.SharedSlot1]
+Id=SharedSlot1
+Type=integer
+DecoType=keybind
+DecoMode=Tap
+; Include the ordinary range, default and config fields.
+
+[Setting.SharedSlot1Mode]
+Id=SharedSlot1Mode
+Type=picker
+DecoType=keybind
+VisibleWhen=InteractionMode
+VisibleValues=2
+; Include ordinary 0|1 / Tap|Hold choices and config fields.
+```
+
+The existing menu update applies proxy changes; no timer is added. A source row
+can briefly become visible during a DMM refresh before that update collapses it.
+It is collapsed only after successful paired-control construction.

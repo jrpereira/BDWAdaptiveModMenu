@@ -10,7 +10,7 @@ permissions:
 jobs:
   repository-hygiene:
     uses: ./.github/workflows/repository-hygiene.yml
-  lua-and-package:
+  lua:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,13 @@ jobs:
         run: |
           find Scripts tests -name '*.lua' -print0 | xargs -0 -n1 luac5.4 -p
           for test in tests/*_test.lua; do lua5.4 "$test"; done
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Test release packaging
         run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Build archive and checksum

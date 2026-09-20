@@ -27,11 +27,17 @@ local function labelsOf(setting)
     local labels={}
     local function add(v) v=trim(v); if v~='' then labels[v]=true end end
     add(field(setting,'Label') or setting.__id)
+    for entry in ((field(setting,'DecoLabels') or field(setting,'DecorationLabels') or '')..';'):gmatch('(.-);') do
+        local label=entry:match('^[^:]+:(.+)$');if label then add(label) end
+    end
     for k,v in pairs(setting) do if tostring(k):lower():match('^label%.') then add(v) end end
     return labels
 end
 
-local function decorationOf(setting) return trim(field(setting,'Decoration')):lower() end
+local function decorationOf(setting)
+    local canonical=field(setting,'DecoType')
+    return trim(canonical~=nil and canonical or field(setting,'Decoration')):lower()
+end
 local function kindOf(setting) return trim(field(setting,'Type')):lower() end
 local function dmmKind(kind)
     if kind=='slider' or kind=='integer' or kind=='percent' or kind=='stepped' then return 'slider' end
@@ -98,7 +104,7 @@ local function collectManifestPaths(node,paths,seen)
 end
 
 function M.discover(log)
-    local result={decorations={},byProvider={},providerModels={},providerList={},providers=0,manifests=0,modes=0}
+    local result={decorations={},byProvider={},providerModels={},providerList={},configProviders={},providers=0,manifests=0,modes=0}
     if type(IterateGameDirectories)~='function' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories unavailable'); return result end
     local ok,tree=pcall(IterateGameDirectories)
     if not ok or type(tree)~='table' then log('REGISTRY_UNAVAILABLE','IterateGameDirectories failed: '..tostring(tree)); return result end
@@ -134,11 +140,17 @@ function M.discover(log)
         log('DMM_DEPENDENCY_INACTIVE','no enabled direct Mods/DawnwalkerModMenu with Scripts/main.lua; no UI discovery installed')
         return result
     end
+    local entry=fileNamed(child(dmm,'Scripts'),'main.lua')
+    if entry and type(entry.__absolute_path)=='string' then
+        result.dmmChoicesPath=entry.__absolute_path:gsub('[^/\\]+$','choices.lua')
+    end
 
-    local paths,seen={},{}
+    local paths,seen,enabledPaths={},{},{}
     for name,node in pairs(mods) do
-        if name~='__files' and type(node)=='table' and enabled(node,tostring(node.__name or name)) then
+        if name~='__files' and type(node)=='table' then
+            local first=#paths+1
             collectManifestPaths(node,paths,seen)
+            for i=first,#paths do enabledPaths[paths[i]]=enabled(node,tostring(node.__name or name)) end
         end
     end
     table.sort(paths)
@@ -155,8 +167,12 @@ function M.discover(log)
                 log('DUPLICATE_PROVIDER_SKIPPED',path..': duplicate Mod Id '..provider.id)
             else
                 result.manifests=result.manifests+1; result.providers=result.providers+1
-                result.providerModels[provider.id]=provider; result.providerList[#result.providerList+1]=provider
-                for _,setting in ipairs(provider.settings) do
+                result.providerModels[provider.id]=provider
+                result.configProviders[#result.configProviders+1]=provider
+                if enabledPaths[path] then result.providerList[#result.providerList+1]=provider end
+                -- DMM exposes disabled providers too. Initialize their config,
+                -- but only decorate providers eligible for runtime loading.
+                for _,setting in ipairs(enabledPaths[path] and provider.settings or {}) do
                     local decoration=decorationOf(setting)
                     if decoration=='keybind' then
                         local kind=kindOf(setting)
@@ -164,6 +180,8 @@ function M.discover(log)
                             local minimum=tonumber(field(setting,'Minimum')); local maximum=tonumber(field(setting,'Maximum'))
                             if minimum and maximum and minimum<maximum then
                                 local d={providerId=provider.id,providerName=provider.name,settingId=setting.__id,type='keybind',minimum=minimum,maximum=maximum,labels=labelsOf(setting),path=path}
+                                local fixedMode=field(setting,'DecoMode')
+                                if fixedMode=='Tap' or fixedMode=='Hold' then d.fixedMode=fixedMode end
                                 local pairId=trim(field(setting,'Pair'))
                                 if pairId=='' then pairId=setting.__id..'Mode' end
                                 local mode=provider.byId[pairId]

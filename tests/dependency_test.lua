@@ -22,6 +22,10 @@ mods.DawnwalkerModMenu=dmm;mods.Consumer=provider
 result=M.discover(log)
 assert(result.dmmEligible and reads==1 and result.manifests==1 and #result.decorations==1)
 print('PASS enabled direct provider scanned once; nested archive manifest ignored')
+provider.__files={file('mod_settings.ini','consumer.ini')};reads=0
+result=M.discover(log)
+assert(reads==1 and #result.configProviders==1 and #result.providerList==0 and #result.decorations==0)
+print('PASS disabled direct provider remains available for config initialization without decoration')
 dmm.__files={};reads=0
 result=M.discover(log)
 assert(not result.dmmEligible and reads==0)

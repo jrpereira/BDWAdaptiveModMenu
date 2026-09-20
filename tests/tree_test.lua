@@ -8,6 +8,8 @@ local function widget(name,class,children)
  function o:IsA(targetClass) assert(type(targetClass)=='table','string IsA lookup forbidden');local path=targetClass.path;return path=='/Script/UMG.'..class or (children and path=='/Script/UMG.PanelWidget') or false end
  function o:GetChildrenCount() assert(children);return #children end
  function o:GetChildAt(i) assert(children);return children[i+1] end
+ function o:GetParent() return self.parent end
+ for _,child in ipairs(children or {}) do child.parent=o end
  return o
 end
 local leaf=widget('Text_1','TextBlock')
@@ -27,6 +29,10 @@ local M=require('widget_discovery')
 local snapshots=M.activeTrees(host,function() return true end)
 assert(#snapshots==1 and #snapshots[1].scrolls==1 and snapshots[1].widgets.Text_1==leaf)
 assert(M.className(leaf)=='TextBlock')
+local targeted=assert(M.routesFor(host,{scroll,leaf},function() return true end))
+assert(M.routeResolver(host,function() return true end)(targeted.Text_1)==leaf)
+assert(targeted.Text_1.parent==targeted.Scroll_1 and targeted.Scroll_1.parent==targeted.Overlay_1)
+print('PASS targeted routes follow exact control ancestry without a full-tree snapshot')
 active=false;assert(#M.activeTrees(host,function() return true end)==0)
 print('PASS fresh activated host tree traversal and class checks without GetClass')
 
@@ -80,3 +86,35 @@ selected=0
 local browserSnapshot=M.activeTrees(host,function() return true end)[1]
 assert(#browserSnapshot.scrolls==1 and browserSnapshot.scrolls[1]==browser and not browserSnapshot.widgets.VisibleProvider)
 print('PASS nested switchers traverse only selected page; paired backing controls remain reachable')
+
+-- Reordered categories retain schema identity through a marker owned by each row.
+local originalRow=M.rowFromWrapper
+local function marked(index)
+ local marker=widget('Marker'..index,'TextBlock')
+ function marker:GetText() return 'MMD_SETTING_INDEX\n'..index end
+ local shell=widget('Shell'..index,'Overlay',{marker})
+ local wrapper=widget('Wrapper'..index,'SizeBox')
+ function wrapper:GetContent() return shell end
+ wrapper.row={label='Row'..index}
+ return wrapper
+end
+local first,second=marked(1),marked(2)
+M.rowFromWrapper=function(w) return w.row end
+local ordered=M.rowsFromScroll(widget('Ordered','ScrollBox',{second,first}))
+assert(ordered[1]==second.row and ordered[2]==first.row)
+local placeholderText=widget('HeaderIdentity','TextBlock')
+function placeholderText:GetText() return 'MMD_HEADER_ROW\nOwned.Header' end
+local placeholder=widget('Placeholder','SizeBox')
+function placeholder:GetContent() return placeholderText end
+local originalFind=StaticFindObject
+StaticFindObject=function(path) if path=='Owned.Header' then return first end;return originalFind(path) end
+ordered=M.rowsFromScroll(widget('Promoted','ScrollBox',{placeholder,second}))
+assert(ordered[1]==first.row and ordered[2]==second.row,'Promoted headers retain schema identity')
+StaticFindObject=originalFind
+local modern=M.childAt(first:GetContent(),0)
+function modern:GetText() return 'MMD_SETTING_INDEX\n1\nProvider%25Name\nPrimaryX' end
+ordered=M.rowsFromScroll(widget('Grouped','ScrollBox',{second,first}))
+assert(ordered[2].identityProviderId=='Provider%Name' and ordered[2].settingId=='PrimaryX')
+assert(ordered[2].settingIndex==1,'DMM index is informational; visual order is retained')
+M.rowFromWrapper=originalRow
+print('PASS category reordering preserves schema row identity')
