@@ -33,6 +33,7 @@ class PackageTests(unittest.TestCase):
                 self.assertFalse(any('/dlls/' in n or n.lower().endswith('.dll') for n in names))
                 self.assertIn('AdaptiveModMenu/Scripts/dirty_labels.lua', names)
                 self.assertIn('AdaptiveModMenu/Scripts/init_config.lua', names)
+                self.assertIn('AdaptiveModMenu/templates/fixes.lua', names)
                 self.assertIn('AdaptiveModMenu/Scripts/settings_api.lua', names)
                 self.assertFalse(any(n.endswith('/config.ini') or n.endswith('.dmp') or '/tests/' in n for n in names))
                 if pack.MODULE == 'QuickslotsForever':

@@ -4,6 +4,7 @@ local Lifecycle=require('dmm_lifecycle')
 local ClickDelivery=require('click_delivery')
 local DirtyLabels=require('dirty_labels')
 local M={}
+local UPDATE_MS=50
 
 function M.install(log)
     log=log or function() end
@@ -27,7 +28,7 @@ function M.install(log)
                 end
             end
         end
-        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget'})
+        add(instance,{'selector','keyBox','keyFrame','keyInner','keyText','stateWidget','modeNav'})
         add(instance.row,{'slider','wrapper','labelWidget','valueWidget','modeState'})
         if instance.pair then
             add(instance.pair,{'button','inner','nav','valueWidget','text'})
@@ -52,30 +53,30 @@ function M.install(log)
         for _,row in ipairs(rows) do
             local metadata=row.dmmSetting
             local modeRow=metadata and metadata.ammPairId and byId[metadata.ammPairId]
+            local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
             local descriptor=metadata and metadata.ammKeybind and metadata.kind=='slider' and {
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
                 fixedMode=metadata.ammFixedMode,modeId=modeRow and metadata.ammPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
+                modeValues=modeValues,disabledMode=modeValues and modeValues[3]==-1 and -1 or nil,
             } or nil
             if descriptor and row.kind=='slider' then
                 local ok,instance,detail=pcall(KeySelector.adopt,row,descriptor,modeRow,clicks)
                 if ok and not instance then
-                    ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log)
-                    if ok and instance and modeRow then
-                        local paired,result,err=pcall(KeySelector.mergePair,instance,modeRow,log,clicks)
-                        if not paired or not result then
-                            clicks:forget(instance)
-                            log('PAIR_FAILED',providerId..'.'..row.settingId..': '..tostring(paired and err or result))
-                        end
+                    if modeRow and not modeRow.pairHost then
+                        ok,instance,detail=false,nil,'paired picker host unavailable'
+                    else
+                        ok,instance,detail=pcall(KeySelector.decorate,row,descriptor,log,modeRow and modeRow.pairHost or nil)
                     end
                 end
                 if ok and instance then
+                    if modeRow then instance.modeNav=modeRow.nav end
                     local recorded,recordError=pcall(ledger,instance)
                     if recorded then
                         instance.id=providerId..'.'..row.settingId
                         instance.undo=nil;instance.pairUndo=nil -- rollback receipts are construction-only
                         state.instances[#state.instances+1]=instance
-                        if modeRow and instance.pair then state.pairsByRow[row]=modeRow end
+                        if modeRow then state.pairsByRow[modeRow]=row end
                     else
                         clicks:forget(instance)
                         -- Roll back only this just-constructed row, never an adopted
@@ -201,7 +202,7 @@ function M.install(log)
         end
         clicks:discard()
         if usable==0 then return end
-        if allowed() then schedule(path,epoch,100) end
+        if allowed() then schedule(path,epoch,UPDATE_MS) end
     end
     local function fail(path,epoch,event,err)
         pending[epoch]=nil

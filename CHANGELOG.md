@@ -1,3 +1,87 @@
+# 0.2.19
+
+- Apply paired-picker hover glow to the hovered tab individually instead of across the full tab row.
+- Enable the bundled Dawnwalker settings-page fixes template by default.
+
+# 0.2.18
+
+- Keep paired key fields and Tap/Hold tabs in fixed columns; render an optional third `-1` Default tab in a reserved left column.
+
+# 0.2.17
+
+- Remove the native empty-key prompt and reject empty key capture; use a paired `Default` mode to disable capture.
+
+# 0.2.16
+
+- Place three-option `Pair` tabs to the left of their key field when the third value is `-1`.
+- Disable and dim key capture while that `-1` option is selected without disabling the picker.
+- Restore paired-tab hover feedback, hide the native empty-key prompt, and shift ordinary Mod Menu entries left by 20 pixels.
+
+# 0.2.15
+
+- Keep `Pair` pickers in the original 150-pixel mode column beside their 96-pixel key control.
+- Add a subtle background behind paired tabs so their shared control surface remains visible.
+- Reduce active-menu selector and dirty-label refresh latency from 100 ms to 50 ms.
+
+# 0.2.14
+
+- Restore key controls in `Pair` rows after the setting-identity schema gained the `ammTabsWidth` field.
+- Parse the paired target, tab width, values, and labels from their current schema positions.
+
+# 0.2.13
+
+- Make the picker that declares `Pair` own the composite row and its visible label.
+- Render the paired key inside that picker only while DMM considers the key setting visible.
+- Keep arbitrary picker values, including negative defaults, independent from positional tab navigation.
+
+# 0.2.12
+
+- Center each horizontal picker label within its allocated option slot.
+
+# 0.2.11
+
+- Rename the template directory from `template` to the shared `templates` convention.
+
+# 0.2.10
+
+- Add `ammTabsWidth` so generated horizontal pickers can reserve up to 440 pixels for their options.
+- Keep existing tab widths unchanged unless a provider explicitly requests the wider layout.
+
+# 0.2.9
+
+- Rename every public decoration metadata key from the old `Deco...` form to the `amm...` prefix.
+- Remove compatibility parsing for the old prefix so manifests have one concise schema.
+
+# 0.2.8
+
+- Let generated provider pages request a smaller Mod Menu browser font and a bounded left indentation.
+- Preserve level-two, left-aligned styling for ordinary modules and aggregate pages.
+
+# 0.2.7
+
+- Move the Dawnwalker settings-page fixes out of AMM startup and into `templates/fixes.lua` under `menu.fixes`.
+- Leave the template without event declarations or runtime hook registration.
+
+# 0.2.6
+
+- Bind native settings reconstruction through `DogwoodUI.SettingTabWidget`, whose inherited functions are hookable before the settings Blueprint is loaded.
+- Track relocated controller-row selection through `RebelSettingEntryWidgetBase:SetSettingSelected` so the Controls page can display its native controller panel.
+- Remove the rejected Blueprint-hook registration path that prevented the v0.2.5 controller transfer from running.
+
+# 0.2.5
+
+- Add a native `Controller Settings` category after the three mouse settings on the Controls page.
+- Move Preset, Controller Sensitivity and Vibrations into that category using the game's own live setting descriptors and widget factory.
+- Show the native controller preset panel on the right when a relocated controller setting is selected.
+- Empty the former Controller page after a successful transfer and rebuild native navigation without polling or config-order assumptions.
+
+# 0.2.4
+
+- Add `ammHeading=0` for categories whose rows should remain visible without rendering their category heading.
+- Render the mod-browser selector as a level-one page header with a themed divider, and align its level-two mod names to the same left edge.
+- Add a native `Mouse Settings` category header above the first three entries on the Controls page.
+- Construct native header text through Unreal's text library in UE4SS Lua states where the convenience `FText` global is unavailable.
+
 # 0.2.0
 
 - Capture left/right Shift, Control, Alt and Windows keys as distinct Windows virtual-key values while rejecting modifier chords.
@@ -48,7 +132,7 @@
 
 # 0.1.47
 
-- Add reusable parent headings for related categories through `DecoParent` and `DecoParentLevel`.
+- Add reusable parent headings for related categories through `ammParent` and `ammParentLevel`.
 - Keep subgroup ordering, navigation and page-ready rebinding intact beneath parent headings.
 - Keep parent headings independent of picker values; providers control subgroup visibility through DMM's ordinary visibility metadata.
 
@@ -85,13 +169,13 @@
 
 # 0.1.40
 
-- Add DecoMode=Tap|Hold as a fixed presentation fallback for key bindings without a logically visible paired mode.
+- Add ammMode=Tap|Hold as a fixed presentation fallback for key bindings without a logically visible paired mode.
 - Follow DMM model visibility when switching between fixed labels and editable Tap/Hold controls, preserving saved modes and discarding stale clicks.
 - Retain key capture, row ownership and existing menu-scoped updates without adding timers.
 
 # 0.1.39
 
-- Standardize metadata on DecoType=tab|keybind, DecoLevel=0–6 and the Deco prefix; retain legacy read compatibility.
+- Standardize metadata on ammType=tab|keybind, ammLevel=0–6 and the Deco prefix; retain legacy read compatibility.
 - Add tab pickers, six font levels, a header toggle, category help, conditional labels and category ordering through metadata.
 - Preserve row identity when categories move and use DMM's existing menu tick for new controls.
 - Keep preset-derived keys visually clean after a manual edit; select Custom automatically and skip it during preset navigation.

@@ -33,11 +33,12 @@ local function fixture(value,dirty)
     function selector:SetSelectedKey(c) self.SelectedKey=c end
     function selector:GetIsSelectingKey() return self.selecting end
     function selector:IsHovered() return self.hovered==true end
+    function selector:SetIsEnabled(v) self.enabled=v end
     -- Deliberately no GetSelectedKey: match the reflected UE 5.5 API.
     local wrapper=obj();function wrapper:GetParent() return obj() end
     local surface=obj();function surface:SetBrushColor(c) self.color=c end
     local instance={row={slider=slider,wrapper=wrapper,valueWidget=textWidget(tostring(value)..(dirty and ' *' or '')),labelWidget=textWidget('Ability')},
-        selector=selector,keyText=textWidget(''),keyInner=surface,keyEdges={},baseLabel='Ability',
+        selector=selector,keyBox=textWidget(''),keyText=textWidget(''),keyInner=surface,keyEdges={},baseLabel='Ability',
         descriptor={providerId='Test',settingId='Ability',minimum=0,maximum=254}}
     assert(M.tick(instance,log));assert(slider.writes==0,'initialization changed stock state')
     return instance,selector,slider
@@ -64,6 +65,9 @@ print('PASS cancellation preserves clean and pre-existing dirty state')
 i,s,slider=fixture(82,true);capture(i,s,'Escape')
 assert(slider.writes==0 and i.keyText.text=='R')
 print('PASS defensive Escape never becomes a binding')
+i,s,slider=fixture(82,false);capture(i,s,'None')
+assert(slider.writes==0 and i.keyText.text=='R' and s.SelectedKey.Key.KeyName:ToString()=='R')
+print('PASS empty key capture is rejected and cannot replace an existing binding')
 i,s,slider=fixture(82,false);capture(i,s,'K')
 slider.value=82/254;i.row.valueWidget.text='82';M.tick(i,log)
 assert(slider.writes==1 and i.keyText.text=='R')
@@ -100,6 +104,21 @@ print('PASS stale DMM text neither blocks stock synchronization nor retries subm
 i,s,slider=fixture(254,false)
 M.tick(i,log);assert(slider.writes==0,'unmapped backing value was automatically overwritten')
 print('PASS unsupported existing backing value is not overwritten')
+
+i,s,slider=fixture(82,false)
+local modeNav=obj({value=2});function modeNav:GetValue() return self.value end
+i.modeNav=modeNav;i.descriptor.modeValues={0,3,-1};i.descriptor.disabledMode=-1
+assert(M.tick(i,log) and s.enabled==false and i.keyBox.opacity==0.45 and i.keyInner.color.A==0.12,
+    'Default mode must disable and visibly dim key capture')
+s.selecting=true;s.SelectedKey=chord('K');assert(M.tick(i,log) and slider.writes==0,
+    'Disabled Default mode must ignore key capture while keeping the mode picker independent')
+s.selecting=false;modeNav.value=0
+assert(M.tick(i,log) and s.enabled==true and i.keyBox.opacity==1,
+    'Tap mode must re-enable key capture')
+capture(i,s,'K');assert(slider.writes==1)
+modeNav.value=1;assert(M.tick(i,log) and s.enabled==true,
+    'Hold mode must leave key capture enabled')
+print('PASS Default disables key capture with visible styling; Tap and Hold re-enable it')
 
 i,s,slider=fixture(82,false)
 local edge=obj();function edge:SetBrushColor(c) self.color=c end

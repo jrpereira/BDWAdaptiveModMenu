@@ -6,65 +6,73 @@ local items={
     {id='Consumable',kind='picker',group='Consumables',label='Consumable',values={0,1},labels={'Tap','Hold'}},
     {id='Enabled',kind='toggle',group='General',label='Enabled',values={0,1},labels={'Off','On'}},
     {id='Key',kind='slider',group='Keys',label='Key'},
-    {id='KeyMode',kind='picker',group='Keys',label='Mode',values={0,1},labels={'Tap','Hold'}},
+    {id='KeyMode',kind='picker',group='Keys',label='Mode',values={0,3,-1},labels={'Tap','Hold','Default'}},
 }
 local schema=[[
 [Setting.Primary]
 Id=Primary
-DecoType=tab
-DecoLevel=2
+ammType=tab
+ammLevel=2
+ammTabsWidth=440
 [Setting.Ability]
 Id=Ability
-DecoLabelWhen=Primary
-DecoLabels=0:Slot 5;1:Slot 1
+ammLabelWhen=Primary
+ammLabels=0:Slot 5;1:Slot 1
 [Category.Abilities]
-DecoHelp=Ability explanation
-DecoParent=Interaction: Independent
-DecoParentLevel=2
-DecoLevel=3
-DecoLabelWhen=Primary
-DecoLabels=0:Secondary Wheel;1:Primary Wheel
-DecoOrderWhen=Primary
-DecoOrders=0:20;1:10
+ammHelp=Ability explanation
+ammHeading=0
+ammParent=Interaction: Independent
+ammParentLevel=2
+ammLevel=3
+ammLabelWhen=Primary
+ammLabels=0:Secondary Wheel;1:Primary Wheel
+ammOrderWhen=Primary
+ammOrders=0:20;1:10
 [Category.Consumables]
-DecoParent=Interaction: Independent
-DecoParentLevel=2
-DecoLabelWhen=Primary
-DecoLabels=0:Primary Wheel;1:Secondary Wheel
-DecoOrderWhen=Primary
-DecoOrders=0:10;1:20
+ammParent=Interaction: Independent
+ammParentLevel=2
+ammLabelWhen=Primary
+ammLabels=0:Primary Wheel;1:Secondary Wheel
+ammOrderWhen=Primary
+ammOrders=0:10;1:20
 [Category.Keys]
-DecoParent=Interaction: Selective
-DecoParentLevel=2
-DecoLevel=3
+ammParent=Interaction: Selective
+ammParentLevel=2
+ammLevel=3
 [Setting.Enabled]
 Id=Enabled
-DecoLevel=1
+ammLevel=1
 [Setting.Key]
 Id=Key
-DecoType=keybind
-DecoMode=Tap
+ammType=keybind
 [Setting.KeyMode]
 Id=KeyMode
-DecoType=keybind
+ammType=tab
+Pair=Key
 ]]
 M.parse(schema,items)
-assert(items[1].ammTabs and items[1].ammFont==2)
+assert(items[1].ammTabs and items[1].ammFont==2 and items[1].ammTabsWidth==440)
 assert(items[2].ammLabelRule.values[0]=='Slot 5')
 assert(items[2].ammGroup.parent==items[3].ammGroup.parent,'Shared parent labels must share one descriptor')
 assert(items[2].ammGroup.parent.label=='Interaction: Independent' and items[2].ammGroup.parent.font==2)
+assert(not items[2].ammGroup.heading and items[3].ammGroup.heading)
 assert(items[5].ammGroup.parent.label=='Interaction: Selective')
-M.parse(schema:gsub('DecoType=tab','Decoration=tabs'):gsub('DecoLevel=2','DecorationFont=Level2'),items)
+M.parse(schema:gsub('ammType=tab','DecoType=tab'):gsub('ammLevel=2','DecoLevel=2')
+    :gsub('ammTabsWidth=440','DecoTabsWidth=440'):gsub('Pair=Key\n',''),items)
 assert(not items[1].ammTabs and items[1].ammFont==nil,'noncanonical metadata must be ignored')
-assert(not pcall(M.parse,schema:gsub('DecoType=tab','DecoType=tabs'),items))
-assert(not pcall(M.parse,schema:gsub('DecoLevel=1','DecoLevel=9'),items))
+assert(not pcall(M.parse,schema:gsub('ammType=tab','ammType=tabs'),items))
+assert(not pcall(M.parse,schema:gsub('ammTabsWidth=440','ammTabsWidth=441'),items))
+assert(not pcall(M.parse,schema:gsub('ammType=tab','ammType=keybind'),items))
+assert(not pcall(M.parse,schema:gsub('ammLevel=1','ammLevel=9'),items))
 M.parse(schema,items)
-assert(not pcall(M.parse,schema:gsub('DecoLevel=2','DecoLevel=9'),items))
-assert(not pcall(M.parse,schema:gsub('DecoLabelWhen=Primary','DecoLabelWhen=Missing'),items))
+assert(not pcall(M.parse,schema:gsub('ammLevel=2','ammLevel=9'),items))
+assert(not pcall(M.parse,schema:gsub('ammHeading=0','ammHeading=true'),items))
+assert(not pcall(M.parse,schema:gsub('ammLabelWhen=Primary','ammLabelWhen=Missing'),items))
 local parentItems={{id='One',kind='toggle',group='One',values={0,1}},{id='Two',kind='toggle',group='Two',values={0,1}}}
-assert(not pcall(M.parse,'[Category.One]\nDecoParent=\n',parentItems))
-assert(not pcall(M.parse,'[Category.One]\nDecoParentLevel=2\n',parentItems))
-assert(not pcall(M.parse,'[Category.One]\nDecoParent=Shared\nDecoParentLevel=2\n[Category.Two]\nDecoParent=Shared\nDecoParentLevel=3\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nammParent=\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nammParentLevel=2\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nammParent=Shared\nammParentLevel=2\n[Category.Two]\nammParent=Shared\nammParentLevel=3\n',parentItems))
+M.parse(schema,items)
 local function widget()
     local w={children={},Font={SkewAmount=0},enabled=true,position=0,visible=0}
     function w:GetFullName() return 'Widget '..tostring(self) end
@@ -97,6 +105,9 @@ local function widget()
     function w:HasUserFocus() return false end
     function w:SetRenderOpacity(v) assert(type(v)=='number');self.opacity=v end
     function w:SetFont(v) self.Font=v end
+    function w:SetWidthOverride(v) self.WidthOverride=v end
+    function w:SetBrushColor(v) self.BrushColor=v end
+    function w:SetRenderTranslation(v) self.RenderTranslation=v end
     return setmetatable(w,{__index=function(_,key)
         if key:match('^Set') or key=='ForceVolatile' or key=='ScrollToStart' or key=='ScrollWidgetIntoView' then return function() end end
     end})
@@ -109,9 +120,28 @@ local api={construct=widget,need=assert,Theme=theme,theme={assets={}},caption=fu
     setText=function(w,text) w.text=text end,describe=noop,actions=noop,status=noop,log=noop}
 api.button=function(tree,text) local b=widget();local l=api.caption(tree,text);b:SetContent(l);return b,l end
 local choices={parse=function() return items end}
+local pages={build=function(tree,providers,status,a)
+    local filterButton,filterLabel=a.button(tree,'Compatible Mods')
+    local browserList=widget()
+    local filterWrapper=widget();filterWrapper:SetContent(filterButton);browserList:AddChild(filterWrapper)
+    local parent=widget()
+    local title=a.caption(tree,'Mod Settings');parent:AddChild(title)
+    a.construct('SizeBox')
+    local allRows={}
+    for index,provider in ipairs(providers) do
+        local button,label=a.button(tree,provider.name)
+        label.Slot:SetPadding({Left=20,Top=4,Right=12,Bottom=4})
+        allRows[#allRows+1]={widget=button,providerIndex=index}
+    end
+    local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,controls={}}
+    function page:refresh(compatibleOnly)
+        a.setText(self.filterLabel,compatibleOnly and 'Compatible Mods' or 'All Mods')
+    end
+    return page
+end}
 local controls={build=function(tree,providers,a)
-    local ui={root=widget(),panels={{rows={},headings={},scroll=widget()}},model={items=items,pending={0,0,0,1,49,1},committed={0,0,0,1,49,1}}}
-    function ui.model:visibility() return {true,true,true,true,true,self.pending[1]==1} end
+    local ui={root=widget(),panels={{rows={},headings={},scroll=widget()}},model={items=items,pending={0,0,0,1,49,-1},committed={0,0,0,1,49,-1}}}
+    function ui.model:visibility() return {true,true,true,true,self.pending[1]==1,true} end
     function ui.root:SetActiveWidgetIndex() self.readyEvents=(self.readyEvents or 0)+1 end
     function ui.model:set(i,v) self.pending[i]=v end
     function ui.model:change(i) self.pending[i]=1-self.pending[i] end
@@ -140,14 +170,59 @@ local controls={build=function(tree,providers,a)
     function ui:select(i) self.current=i end
     return ui
 end}
-assert(M.install(choices,controls));assert(not M.install(choices,controls))
+assert(M.install(choices,controls,pages));assert(not M.install(choices,controls,pages))
+local browserProviders={
+    {name='Templates',choices=items},
+    {name='Menu Controls',choices=items,ammBrowserLevel=4,ammBrowserIndent=20},
+}
+local page=pages.build(widget(),browserProviders,nil,api)
+assert(#page.browserList.children==2 and page.browserList.children[2]:GetContent(),
+    'Mod-browser title must have a themed divider immediately beneath it')
+assert(page.filterLabel.Font.Size==page.controls.ammHeaderTitle.Font.Size and
+    page.filterLabel.color==page.controls.ammHeaderTitle.color,'Compatible Mods must use the mod-title style')
+page:refresh(false)
+assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and page.filterLabel.color=='title',
+    'Filter text changes must retain the mod-title style')
+local modLabel=page.allRows[1].widget:GetContent()
+assert(modLabel.text=='Templates' and modLabel.Font.Size==16 and modLabel.color=='muted',
+    'Mod-list labels must use level-two styling')
+assert(page.filterLabel.Slot.Padding.Left==0 and modLabel.Slot.Padding.Left==-20,
+    'Regular Mod Menu entries must align at the requested negative offset')
+local categoryLabel=page.allRows[2].widget:GetContent()
+assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and categoryLabel.color=='body',
+    'Category modules must accept level-four browser styling')
+assert(categoryLabel.Slot.Padding.Left==20,
+    'Category modules must accept a small browser indentation')
 local ui=controls.build(widget(),{{choices=items}},api)
 ui.ammHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
 assert(#row.ammTabs==2 and row.ammLabel.Font.Size==16)
+assert(row.ammTabs[1].label.Slot.HorizontalAlignment==0 and row.ammTabs[1].label.Slot.VerticalAlignment==2,
+    'Tab labels must fill their allocated button slots for centered text justification')
 assert(row.ammTabs[1].selected and not row.ammTabs[2].selected)
-assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\nfixed')
+local keyRow,modeRow=ui.panels[1].rows[5],ui.panels[1].rows[6]
+assert(modeRow.ammPairHost and modeRow.ammPairHostBox.visible==1 and keyRow.ammPairOwner==6,
+    'The mode row must own the composite and hide its key host while the key is logically hidden')
+assert(modeRow.ammTabsWidth==150,
+    'Paired pickers must use the original 150-pixel mode column')
+assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.RenderTranslation.X==-158,
+    'All paired rows must keep the key control in the same fixed column')
+assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
+    and modeRow.ammPairDisablesKey,
+    'Default-capable pairs must render only their Default option in the reserved left column')
+assert(modeRow.ammTabs[1].background and modeRow.ammTabs[1].background.BrushColor.A==0.18,
+    'Paired tabs must retain subtle individual backgrounds')
+modeRow.ammTabs[1].widget.hovered=true
+ui:tick({},function() return false,false,false end,false)
+assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
+    and modeRow.ammTabs[1].background.BrushColor.A==0.22
+    and modeRow.ammTabs[2].background.BrushColor.R==0.12,
+    'Paired tabs must apply hover glow only to the hovered tab')
+modeRow.ammTabs[1].widget.hovered=false
+ui:tick({},function() return false,false,false end,false)
+assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+    'Individual paired-tab hover styling must clear on pointer exit')
 assert(ui.panels[1].rows[2].ammLabel.text=='Slot 5')
 local scroll=ui.panels[1].scroll
 local function position(target)
@@ -161,13 +236,21 @@ local independent
 for _,child in ipairs(scroll.children) do if child.text=='Interaction: Independent' then independent=child end end
 assert(position(independent)<position(ui.panels[1].headings[3].widget),'Parent must precede its subgroup headings')
 assert(position(ui.panels[1].headings[3].widget)<position(ui.panels[1].headings[2].widget),'Primary category must precede secondary')
+assert(ui.panels[1].headings[2].widget.visible==1,'ammHeading=0 must collapse only the category heading')
+assert(ui.panels[1].rows[2].visible and independent.visible==4,'Hidden subgroup heading must retain rows and visible parent')
 local count=scroll:GetChildrenCount()
 row.ammTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[1]==1 and row.ammTabs[2].selected)
-assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\neditable')
-ui.panels[1].rows[6].wrapper:SetVisibility(1);ui:refresh()
-assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\neditable','Backing wrapper collapse must not determine logical editability')
+assert(modeRow.ammPairHostBox.visible==0 and keyRow.wrapper.visible==1
+    and modeRow.widget:GetParent().WidthOverride==226,
+    'A visible paired key must render inside the mode row while its original row remains collapsed')
+assert(#modeRow.ammTabs==3 and modeRow.ammTabs[3].selected,
+    'The mode owner must preserve arbitrary values and select negative defaults by value')
+modeRow.ammTabs[2].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==3 and modeRow.ammTabs[2].selected,
+    'Mode tabs must navigate by position while storing their declared numeric value')
 assert(ui.panels[1].rows[2].ammLabel.text=='Slot 1')
 assert(position(independent)<position(ui.panels[1].headings[2].widget))
 assert(position(ui.panels[1].headings[2].widget)<position(ui.panels[1].headings[3].widget))
@@ -179,10 +262,11 @@ local header=ui.panels[1].rows[4]
 assert(header.ammHeader and header.wrapper:GetParent()==ui.ammHeaderHost)
 assert(header.ammPlaceholder.visible==1 and header.ammLabel.Font.Size==22)
 ui.model:set(1,0);ui:refresh()
-assert(ui.panels[1].rows[5].ammModeState.text=='AMM_MODE\nfixed' and ui.model.pending[6]==1,'Hidden mode preserves saved Hold')
+assert(modeRow.ammPairHostBox.visible==1 and ui.model.pending[6]==3,
+    'Hiding the paired key must preserve the mode picker and its saved value')
 assert(ui.root.readyEvents==2,'Visibility and ordering changes must coalesce into one page-ready event')
 ui.model.visibilityOverride=true
-function ui.model:visibility() return {true,true,true,true,true,self.visibilityOverride} end
+function ui.model:visibility() return {true,true,true,true,self.visibilityOverride,true} end
 ui:refresh()
 assert(ui.root.readyEvents==3,'Visibility-only changes must notify decorators after DMM refresh')
 ui:refresh();assert(ui.root.readyEvents==3,'Stable visibility must not repeat page-ready events')

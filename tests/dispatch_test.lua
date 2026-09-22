@@ -139,7 +139,7 @@ print('PASS lazy provider opens after browser dormancy: page event wakes dormant
 local firstScans=scans
 local firstFinds=finds
 untilTime(now+900);assert(scans==firstScans)
-assert(finds-firstFinds==9,'steady updates resolve one host, never each control')
+assert(finds-firstFinds==18,'50 ms steady updates resolve one host, never each control')
 print('PASS fresh host lookup per update, no owner scan or per-control global lookup')
 untilTime(now+100);assert(scans==firstScans)
 print('PASS active menu: no periodic structural scans; fresh control updates only')
@@ -168,8 +168,8 @@ local beforeRecreate=builds
 emit(activate,'post');untilTime(now)
 assert(builds==beforeRecreate+1,'removed host metadata was retained')
 print('PASS foreign removal preserves state; removal after deactivation retires host')
-fail=true;untilTime(now+100);local previous=ticks
-fail=false;untilTime(now+100);assert(ticks==previous+1 and builds==2)
+fail=true;untilTime(now+50);local previous=ticks
+fail=false;untilTime(now+50);assert(ticks==previous+1 and builds==2)
 print('PASS transient tick error recovers without redecorating')
 emit(activate,'post',other);untilTime(now)
 emit(activate,'post',host);untilTime(now)
@@ -281,13 +281,13 @@ print('PASS page selection binds the exact provider ScrollBox with zero full-tre
 local healthyTick=package.loaded.key_selector.tick
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 package.loaded.key_selector.tick=function() return false end
-untilTime(now+200)
+untilTime(now+100)
 assert(instance.failures==2 and not instance.disabled,'failures='..tostring(instance.failures)..' disabled='..tostring(instance.disabled))
 package.loaded.key_selector.tick=healthyTick
-untilTime(now+100)
+untilTime(now+50)
 assert(instance.failures==0 and not instance.disabled,'successful update did not reset consecutive failures')
 package.loaded.key_selector.tick=function() return false end
-untilTime(now+300)
+untilTime(now+150)
 assert(instance.disabled and instance.failures==3)
 local stoppedCalls=calls
 untilTime(now+60000)
@@ -340,28 +340,26 @@ assert(not instance.restored,'adoption failure dismantled an existing row')
 print('PASS failed adoption bookkeeping does not dismantle an existing decoration')
 
 -- Row order, descriptor order and formatting metadata order are independent.
-local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),identityProviderId='P',settingId='Mode',
- dmmSetting={id='Mode',kind='picker',values={0,1},labels={'Tap','Hold'},ammKeybind=true}}
+local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),pairHost=obj('peerHost'),identityProviderId='P',settingId='Mode',
+ dmmSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},ammPairTargetId='K'}}
 row.label='Same';row.decoration=nil
 pageRows={peer,row}
 local keySetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true,ammPairId='Mode'}
-local modeSetting={id='Mode',kind='picker',values={0,1},labels={'Tap','Hold'},ammKeybind=true}
+local modeSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},ammPairTargetId='K'}
 row.dmmSetting=keySetting;peer.dmmSetting=modeSetting
-local matched,paired=0,0
+local matched,bound=0,nil
 package.loaded.key_selector.adopt=function() return nil end
-package.loaded.key_selector.decorate=function(r,d)
+package.loaded.key_selector.decorate=function(r,d,_,host)
  assert(r==row and d.providerId=='P' and d.settingId=='K' and d.modeId=='Mode'
-  and d.minimum==0 and d.maximum==254 and d.modeOptions==modeSetting.labels);matched=matched+1
- return {row=r,selector=relay,keyBox=wrapper}
-end
-package.loaded.key_selector.mergePair=function(i,r)
- assert(i.row==row and r==peer);paired=paired+1;return true
+  and d.minimum==0 and d.maximum==254 and d.modeOptions==modeSetting.labels
+  and d.modeValues==modeSetting.values and d.disabledMode==-1 and host==peer.pairHost);matched=matched+1
+ bound={row=r,selector=relay,keyBox=wrapper};return bound
 end
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
-assert(matched==1 and paired==1 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
+assert(matched==1 and bound.modeNav==peer.nav and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
 pageRows={row,peer}
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
-assert(matched==2 and paired==2 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
+assert(matched==2 and row.dmmSetting==keySetting and peer.dmmSetting==modeSetting)
 pageRows={row,row}
 emit('/Script/UMG.WidgetSwitcher:SetActiveWidgetIndex','post',switcher);untilTime(now)
 assert(matched==2,'duplicate row identity must not bind')
