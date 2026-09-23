@@ -224,18 +224,18 @@ assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.Rende
 assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
     and modeRow.ammPairDisablesKey,
     'Default-capable pairs must render only their Default option in the reserved left column')
-assert(modeRow.ammTabs[1].background and modeRow.ammTabs[1].background.BrushColor.A==0.10
+assert(modeRow.ammTabs[1].background and modeRow.ammTabs[1].background.BrushColor.A==0.18
     and modeRow.ammTabs[2].background.BrushColor.A==0.18,
-    'Default must soften only the shared Tap/Hold background')
+    'The shared Tap/Hold button must match the Default background')
 modeRow.ammTabs[1].widget.hovered=true
 ui:tick({},function() return false,false,false end,false)
 assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
-    and modeRow.ammTabs[1].background.BrushColor.A==0.14
+    and modeRow.ammTabs[1].background.BrushColor.A==0.22
     and modeRow.ammTabs[2].background.BrushColor.R==0.12,
-    'Default must keep the shared control hover glow translucent')
+    'The shared control must retain its hover glow')
 modeRow.ammTabs[1].widget.hovered=false
 ui:tick({},function() return false,false,false end,false)
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.10,
+assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
     'Individual paired-tab hover styling must clear on pointer exit')
 assert(ui.panels[1].rows[2].ammLabel.text=='Slot 5')
 local scroll=ui.panels[1].scroll
@@ -265,8 +265,8 @@ modeRow.ammTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Tap',
     'Clicking the shared mode control from Default must select Tap')
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.30,
-    'Selecting Tap must match the adjacent key background opacity')
+assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+    'Selecting Tap must keep the Default background opacity')
 modeRow.ammTabs[1].widget.hovered=true
 ui:tick({},function() return false,false,false end,false)
 assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
@@ -286,8 +286,8 @@ modeRow.ammTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[6]==-1 and modeRow.ammTabs[2].selected and modeRow.ammTabs[1].label.text=='Tap',
     'Default must remain selectable without losing the shared control')
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.10,
-    'Selecting Default again must soften the shared control immediately')
+assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+    'Selecting Default again must retain the matching background')
 modeRow.ammTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 modeRow.ammTabs[1].widget.clicked=true

@@ -1,3 +1,7 @@
+# 0.2.25
+
+- Place the paired Tap/Hold control beside Key capture and use the same dark background as Default, including when Default is selected.
+
 # 0.2.24
 
 - Align the 75-pixel paired Tap/Hold control beside its key field at the same height and match the key's active dark background; retain its hover and Default-dimmed states.

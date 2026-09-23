@@ -186,12 +186,11 @@ function M.install(choices,controls,pages)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
         local function styleBackground(tab,hovered)
             if not tab.background then return end
-            local dimmed=tab.defaultDimmed==true
-            if tab.backgroundHovered==hovered and tab.backgroundDimmed==dimmed then return end
+            if tab.backgroundHovered==hovered then return end
             tab.background:SetBrushColor(hovered
-                and {R=0.95,G=0.63,B=0.08,A=dimmed and 0.14 or 0.22}
-                or {R=0.12,G=0.12,B=0.12,A=dimmed and 0.10 or (tab.toggleValues and 0.30 or 0.18)})
-            tab.backgroundHovered,tab.backgroundDimmed=hovered,dimmed
+                and {R=0.95,G=0.63,B=0.08,A=0.22}
+                or {R=0.12,G=0.12,B=0.12,A=0.18})
+            tab.backgroundHovered=hovered
         end
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
         local function add(parent,child) return api.need(parent:AddChild(child),'AMM presentation child') end
@@ -431,7 +430,6 @@ function M.install(choices,controls,pages)
                     if tab.toggleValues then
                         local display=current==tab.toggleValues[2] and tab.toggleLabels[2] or tab.toggleLabels[1]
                         if tab.display~=display then api.setText(tab.label,display);tab.display=display end
-                        tab.defaultDimmed=row.ammPairDisablesKey and current==-1
                         styleBackground(tab,tab.hovered==true)
                     end
                     if tab.selected~=selected or tab.enabled~=enabled then
