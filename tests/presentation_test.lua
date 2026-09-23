@@ -210,6 +210,8 @@ assert(#modeRow.ammTabs==2 and modeRow.ammTabs[1].toggleValues[1]==0
     and modeRow.ammTabs[1].toggleValues[2]==3 and modeRow.ammTabs[1].label.text=='Tap'
     and modeRow.ammTabs[2].selected,
     'Tap and Hold must share one control while Default remains separate')
+assert(modeRow.ammTabs[1].background:GetParent().WidthOverride==75,
+    'The shared Tap/Hold control must occupy half of the paired mode column')
 assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.RenderTranslation.X==-158,
     'All paired rows must keep the key control in the same fixed column')
 assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
@@ -299,7 +301,7 @@ twoMode.model.pending[6],twoMode.model.committed[6]=0,0
 twoMode:show(1)
 local toggle=twoMode.panels[1].rows[6].ammTabs
 assert(#toggle==1 and not twoMode.panels[1].rows[6].ammDefaultBackground
-    and toggle[1].label.text=='Tap',
+    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75,
     'A paired mode without Default must render one full-width Tap/Hold control')
 toggle[1].widget.clicked=true
 twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)

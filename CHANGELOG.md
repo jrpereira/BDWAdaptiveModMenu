@@ -1,3 +1,7 @@
+# 0.2.22
+
+- Reduce the shared paired Tap/Hold control to half of its reserved 150-pixel mode column without changing key or Default placement.
+
 # 0.2.21
 
 - Render paired Tap/Hold modes in one full-width control that toggles on click; keep an optional Default mode in its separate reserved column.

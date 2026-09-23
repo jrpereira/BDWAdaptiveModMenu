@@ -250,6 +250,9 @@ function M.install(choices,controls,pages)
                     end
                     local modeCount=#choices-(disablesKey and 1 or 0)
                     local width=totalWidth/modeCount
+                    if paired and count>=2 then
+                        width=modeCount>1 and (totalWidth/2)/(modeCount-1) or totalWidth/2
+                    end
                     local defaultTabs=disablesKey and new('HorizontalBox') or nil
                     if paired then row.ammTabsBackgrounds={} end
                     for _,choice in ipairs(choices) do
@@ -268,7 +271,8 @@ function M.install(choices,controls,pages)
                             row.ammTabsBackgrounds[#row.ammTabsBackgrounds+1]=background
                             visible=background
                         end
-                        add(isDefault and defaultTabs or tabs,sized(visible,isDefault and 96 or width))
+                        local choiceWidth=choice.toggleValues and totalWidth/2 or width
+                        add(isDefault and defaultTabs or tabs,sized(visible,isDefault and 96 or choiceWidth))
                         row.ammTabs[#row.ammTabs+1]={widget=button,label=label,value=choice.value,
                             toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
                             pressed=false,pointer=false,background=background}
