@@ -237,8 +237,10 @@ function M.install(choices,controls,pages)
                     row.ammModeState:SetVisibility(1)
                     add(row.wrapper:GetContent(),row.ammModeState)
                 end
-                M.style(row.ammLabel,setting.ammFont,api)
-                if setting.ammFont==1 then
+                local level=setting.ammFont
+                if level==1 and providers[index].id=='UE4SSTemplatingEngine' then level=2 end
+                M.style(row.ammLabel,level,api)
+                if level==1 then
                     local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.ammLabel.Slot
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})

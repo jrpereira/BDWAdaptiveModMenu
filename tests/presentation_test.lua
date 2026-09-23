@@ -377,8 +377,10 @@ templatePage.ammHeaderTitle=page.modTitle
 templatePage:show(1)
 assert(not templatePage.panels[1].rows[1].ammHeader
     and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
-    and templatePage.panels[1].rows[1].ammLabel.visible~=1,
-    'Template page must keep its level-one picker in the settings list')
+    and templatePage.panels[1].rows[1].ammLabel.visible~=1
+    and templatePage.panels[1].rows[1].ammLabel.Font.Size==16
+    and templatePage.panels[1].rows[1].ammLabel.Slot.Padding.Left==20,
+    'Template page must keep its picker in a normally styled and indented row')
 local pickerHeader=controls.build(widget(),{{id='UE4SSTemplatingEngine.module.ActionFandango',choices=items}},api)
 pickerHeader.ammHeaderHost=page.controls.ammHeaderHost
 pickerHeader.ammHeaderTitle=page.modTitle
