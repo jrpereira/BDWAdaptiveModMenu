@@ -2,6 +2,9 @@
 local M={version=1}
 local pairHostMarkerPrefix='AMM_PAIR_HOST_1\n'
 local dirtySignalPrefix='AMM_VALUE_DIRTY_1\n'
+local function modulePage(provider)
+    return type(provider.id)=='string' and provider.id:match('^UE4SSTemplatingEngine%.module%.')~=nil
+end
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
     return tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
@@ -240,7 +243,7 @@ function M.install(choices,controls,pages)
                     local padding=slot.Padding
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
                 end
-                if setting.ammHeader and ui.ammHeaderHost then
+                if setting.ammHeader and ui.ammHeaderHost and modulePage(providers[index]) then
                     assert(not panel.ammHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))

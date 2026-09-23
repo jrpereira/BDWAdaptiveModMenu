@@ -67,7 +67,10 @@ local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('E
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
 local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},ammHeader=true})
-local all={key,mode,toggle,literal,fallback,header}
+header.providerId='UE4SSTemplatingEngine.module.ActionFandango'
+local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},ammHeader=true})
+template.providerId='UE4SSTemplatingEngine'
+local all={key,mode,toggle,literal,fallback,header,template}
 local function star(r)
     for _,w in ipairs(r.shell.children) do if w.text=='*' then return w end end
     error('missing separate star')
@@ -96,7 +99,7 @@ assert(#errors==0,table.concat(errors,'\n'))
 assert(#header.shell.children==0,'The level-one title row must not show a dirty star')
 local function changed(r,text) r.valueWidget:SetText({ftext=text});controller:refresh(host) end
 
-for _,r in ipairs({key,mode,toggle,literal,fallback}) do
+for _,r in ipairs({key,mode,toggle,literal,fallback,template}) do
     assert(star(r).visibility==2 and star(r).outer==host.WidgetTree)
     assert(star(r).Slot.horizontal==1 and star(r).Slot.vertical==2 and star(r).Slot.padding.Left==4)
 end

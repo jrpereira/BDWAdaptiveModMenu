@@ -318,11 +318,13 @@ Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
 and Category headings without changing control types.
 
-A setting at typography level 1 shares the mod page title row above the divider.
-Its setting label is hidden while the original control retains its value and
-navigation. Dirty styling is omitted from this title row. This supports toggles,
-pickers and sliders; at most one setting per provider may use level 1. No
-separate header flag is required. Mods still implement their settings' behavior.
+On generated Templating Engine module pages, a setting at typography level 1
+shares the mod page title row above the divider. Its setting label is hidden
+while the original control retains its value and navigation. Dirty styling is
+omitted from this title row. The Templates page keeps its level-one settings in
+the normal settings list. This supports toggles, pickers and sliders; at most
+one setting per provider may use level 1. No separate header flag is required.
+Mods still implement their settings' behavior.
 
 Categories can declare `ammHelp` to show Level5 explanatory text under
 the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.

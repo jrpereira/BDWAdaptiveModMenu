@@ -218,7 +218,7 @@ assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and c
     'Category modules must accept level-four browser styling')
 assert(categoryLabel.Slot.Padding.Left==20,
     'Category modules must accept a small browser indentation')
-local ui=controls.build(widget(),{{choices=items}},api)
+local ui=controls.build(widget(),{{id='UE4SSTemplatingEngine.module.ActionFandango',choices=items}},api)
 ui.ammHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
@@ -371,7 +371,15 @@ local pickerHeaderSchema=schema:gsub('Id=Primary\nammType=tab\nammLevel=2',
     'Id=Primary\nammType=tab\nammLevel=1'):gsub('Id=Enabled\nammLevel=1',
     'Id=Enabled\nammLevel=2')
 M.parse(pickerHeaderSchema,items)
-local pickerHeader=controls.build(widget(),{{choices=items}},api)
+local templatePage=controls.build(widget(),{{id='UE4SSTemplatingEngine',choices=items}},api)
+templatePage.ammHeaderHost=page.controls.ammHeaderHost
+templatePage.ammHeaderTitle=page.modTitle
+templatePage:show(1)
+assert(not templatePage.panels[1].rows[1].ammHeader
+    and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
+    and templatePage.panels[1].rows[1].ammLabel.visible~=1,
+    'Template page must keep its level-one picker in the settings list')
+local pickerHeader=controls.build(widget(),{{id='UE4SSTemplatingEngine.module.ActionFandango',choices=items}},api)
 pickerHeader.ammHeaderHost=page.controls.ammHeaderHost
 pickerHeader.ammHeaderTitle=page.modTitle
 pickerHeader:show(1)

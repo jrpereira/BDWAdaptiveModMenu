@@ -170,7 +170,9 @@ function M.new(log)
             local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if not (row.dmmSetting and row.dmmSetting.ammHeader)
+                if not (row.dmmSetting and row.dmmSetting.ammHeader
+                    and type(row.providerId)=='string'
+                    and row.providerId:match('^UE4SSTemplatingEngine%.module%.'))
                     and Discovery.valid(shell) and Discovery.valid(row.labelWidget)
                     and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)
