@@ -301,6 +301,11 @@ end
 
 function M.plan(provider,manifest,choices,fs,settings)
     settings=settings or choices.parse(manifest:gsub('^\239\187\191',''))
+    local persistent={}
+    for _,setting in ipairs(settings) do
+        if not setting.ammNavigation then persistent[#persistent+1]=setting end
+    end
+    settings=persistent
     M.defaultSources(manifest,settings)
     if #settings==0 then return nil end
     local path

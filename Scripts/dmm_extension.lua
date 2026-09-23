@@ -18,6 +18,7 @@ return {
         assert(type(dmm)=='table' and dmm.version==1,'unsupported DMM extension API')
         assert(type(dmm.choices)=='table' and type(dmm.controls)=='table' and type(dmm.pages)=='table',
             'DMM extension modules unavailable')
+        local navigation=module('navigation')
         local mapped=module('mapped_presets')
         local presentation=module('presentation')
         local config=module('init_config')
@@ -27,6 +28,7 @@ return {
         assert(type(config.install)=='function','configuration installer unavailable')
         assert(type(dmm.events)=='table' and type(dmm.events.on)=='function','DMM lifecycle events unavailable')
         assert(type(lifecycle.publisher)=='function','lifecycle publisher unavailable')
+        navigation.install(dmm.choices)
         mapped.install(dmm.choices,dmm.controls)
         presentation.install(dmm.choices,dmm.controls,dmm.pages)
         config.install(dmm.choices)

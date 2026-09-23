@@ -301,6 +301,12 @@ callback.
 same row as its label. It supports two to eight choices and retains DMM's
 keyboard/controller navigation, pending model and Apply/Restore behavior.
 
+Set `ammNavigation=1` on a picker to use its choices only for menu navigation.
+The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
+config key, never marks the menu dirty, and is omitted from Apply events. Its
+selected view lasts while the menu model is open. Only one navigation picker
+is supported per provider; pair it with `ammType=tab` for horizontal choices.
+
 Set `ammTabsWidth` to an integer from 160 through 440 to reserve that total
 width in pixels for the horizontal choices. The default grows by option count
 up to 384 pixels. A two-option `ammTabsWidth=440` picker is twice the default

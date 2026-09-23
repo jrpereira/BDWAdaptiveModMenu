@@ -22,11 +22,13 @@ local choices,controls,pages={},{},{}
 local callbacks={}
 local events={on=function(_,name,callback) callbacks[name]=callback end}
 extension.install({version=1,choices=choices,controls=controls,pages=pages,events=events})
-assert(#loaded==4 and loaded[1]:match('mapped_presets%.lua$') and loaded[2]:match('presentation%.lua$')
- and loaded[3]:match('init_config%.lua$') and loaded[4]:match('dmm_lifecycle%.lua$'))
-assert(installs[1].args[1]==choices and installs[1].args[2]==controls)
-assert(installs[2].args[1]==choices and installs[2].args[2]==controls and installs[2].args[3]==pages)
-assert(installs[3].args[1]==choices)
+assert(#loaded==5 and loaded[1]:match('navigation%.lua$') and loaded[2]:match('mapped_presets%.lua$')
+ and loaded[3]:match('presentation%.lua$') and loaded[4]:match('init_config%.lua$')
+ and loaded[5]:match('dmm_lifecycle%.lua$'))
+assert(installs[1].args[1]==choices)
+assert(installs[2].args[1]==choices and installs[2].args[2]==controls)
+assert(installs[3].args[1]==choices and installs[3].args[2]==controls and installs[3].args[3]==pages)
+assert(installs[4].args[1]==choices)
 for _,name in ipairs({'providerPrepared','providerRefreshed','hostClosing'}) do
  assert(type(callbacks[name])=='function');callbacks[name]({});assert(installs[#installs].event==name)
 end

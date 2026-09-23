@@ -4,6 +4,7 @@
   "version_pattern": "local VERSION\\s*=\\s*[\\\"\\x27]([^\\\"\\x27]+)",
   "files": {
     "Scripts/dmm_extension.lua": "Scripts/dmm_extension.lua",
+    "Scripts/navigation.lua": "Scripts/navigation.lua",
     "Scripts/mapped_presets.lua": "Scripts/mapped_presets.lua",
     "Scripts/presentation.lua": "Scripts/presentation.lua",
     "Scripts/click_delivery.lua": "Scripts/click_delivery.lua",
