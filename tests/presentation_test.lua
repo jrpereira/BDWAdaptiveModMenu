@@ -212,6 +212,13 @@ assert(#modeRow.ammTabs==2 and modeRow.ammTabs[1].toggleValues[1]==0
     'Tap and Hold must share one control while Default remains separate')
 assert(modeRow.ammTabs[1].background:GetParent().WidthOverride==75,
     'The shared Tap/Hold control must occupy half of the paired mode column')
+local toggleBox=modeRow.ammTabs[1].background:GetParent()
+local toggleContainer=toggleBox:GetParent()
+assert(toggleBox.HeightOverride==modeRow.ammPairHostBox.HeightOverride
+    and toggleContainer.RenderTranslation.X==-75
+    and toggleContainer.RenderTranslation.X-toggleBox.WidthOverride
+        -modeRow.ammPairHostBox.RenderTranslation.X==8,
+    'The shared mode control must match key height and sit eight pixels to its right')
 assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.RenderTranslation.X==-158,
     'All paired rows must keep the key control in the same fixed column')
 assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
@@ -258,8 +265,15 @@ modeRow.ammTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Tap',
     'Clicking the shared mode control from Default must select Tap')
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
-    'Selecting Tap must restore the normal paired background opacity')
+assert(modeRow.ammTabs[1].background.BrushColor.A==0.30,
+    'Selecting Tap must match the adjacent key background opacity')
+modeRow.ammTabs[1].widget.hovered=true
+ui:tick({},function() return false,false,false end,false)
+assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
+    and modeRow.ammTabs[1].background.BrushColor.A==0.22,
+    'The active paired mode must match the key hover background')
+modeRow.ammTabs[1].widget.hovered=false
+ui:tick({},function() return false,false,false end,false)
 modeRow.ammTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[6]==3 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Hold',
@@ -306,7 +320,8 @@ twoMode.model.pending[6],twoMode.model.committed[6]=0,0
 twoMode:show(1)
 local toggle=twoMode.panels[1].rows[6].ammTabs
 assert(#toggle==1 and not twoMode.panels[1].rows[6].ammDefaultBackground
-    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75,
+    and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75
+    and toggle[1].background:GetParent():GetParent().RenderTranslation.X==-75,
     'A paired mode without Default must render one full-width Tap/Hold control')
 toggle[1].widget.clicked=true
 twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)

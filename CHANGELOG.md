@@ -1,3 +1,7 @@
+# 0.2.24
+
+- Align the 75-pixel paired Tap/Hold control beside its key field at the same height and match the key's active dark background; retain its hover and Default-dimmed states.
+
 # 0.2.23
 
 - Soften the shared Tap/Hold background while Default is selected, including its hover glow.

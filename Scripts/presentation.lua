@@ -190,13 +190,13 @@ function M.install(choices,controls,pages)
             if tab.backgroundHovered==hovered and tab.backgroundDimmed==dimmed then return end
             tab.background:SetBrushColor(hovered
                 and {R=0.95,G=0.63,B=0.08,A=dimmed and 0.14 or 0.22}
-                or {R=0.12,G=0.12,B=0.12,A=dimmed and 0.10 or 0.18})
+                or {R=0.12,G=0.12,B=0.12,A=dimmed and 0.10 or (tab.toggleValues and 0.30 or 0.18)})
             tab.backgroundHovered,tab.backgroundDimmed=hovered,dimmed
         end
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
         local function add(parent,child) return api.need(parent:AddChild(child),'AMM presentation child') end
-        local function sized(child,width)
-            local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(40)
+        local function sized(child,width,height)
+            local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(height or 40)
             local slot=api.need(box:SetContent(child),'AMM presentation size')
             slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
             return box
@@ -281,12 +281,16 @@ function M.install(choices,controls,pages)
                             visible=background
                         end
                         local choiceWidth=choice.toggleValues and totalWidth/2 or width
-                        add(isDefault and defaultTabs or tabs,sized(visible,isDefault and 96 or choiceWidth))
+                        add(isDefault and defaultTabs or tabs,
+                            sized(visible,isDefault and 96 or choiceWidth,choice.toggleValues and 32 or nil))
                         row.ammTabs[#row.ammTabs+1]={widget=button,label=label,value=choice.value,
                             toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
                             pressed=false,pointer=false,background=background}
                     end
                     local overlay=row.background:GetParent()
+                    if paired and count>=2 and modeCount==1 then
+                        tabs:SetRenderTranslation({X=-totalWidth/2,Y=0})
+                    end
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
                     if paired then row.ammTabsBackground=row.ammTabsBackgrounds[1] end
                     if defaultTabs then
