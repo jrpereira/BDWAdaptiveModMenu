@@ -52,11 +52,11 @@ function M.install(log)
     local function bindPage(state,rows,providerId,byId)
         for _,row in ipairs(rows) do
             local metadata=row.dmmSetting
-            local modeRow=metadata and metadata.ammPairId and byId[metadata.ammPairId]
+            local modeRow=metadata and metadata.kemPairId and byId[metadata.kemPairId]
             local modeValues=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.values
-            local descriptor=metadata and metadata.ammKeybind and metadata.kind=='slider' and {
+            local descriptor=metadata and metadata.kemKeybind and metadata.kind=='slider' and {
                 providerId=providerId,settingId=metadata.id,minimum=metadata.minimum,maximum=metadata.maximum,
-                fixedMode=metadata.ammFixedMode,modeId=modeRow and metadata.ammPairId or nil,
+                fixedMode=metadata.kemFixedMode,modeId=modeRow and metadata.kemPairId or nil,
                 modeOptions=modeRow and modeRow.dmmSetting and modeRow.dmmSetting.labels or nil,
                 modeValues=modeValues,disabledMode=modeValues and modeValues[3]==-1 and -1 or nil,
             } or nil

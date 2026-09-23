@@ -1,5 +1,5 @@
 -- Public, game-agnostic client for durable DMM Apply notifications.
--- Consumers may vendor this file unchanged; the transport is private to AMM/DMM.
+-- Consumers may vendor this file unchanged; the transport is private to KEM/DMM.
 local M={version=1}
 local subscriptions={}
 local owner=tostring({}):gsub('%W','')
@@ -59,7 +59,7 @@ function M.subscribe(providerId,callback)
             record.last=event.revision
             if record.callback then record.callback(event) end
         end)
-        if not success then print('[AMM Settings API] callback failed for '..providerId..': '..tostring(message)..'\n') end
+        if not success then print('[KEM Settings API] callback failed for '..providerId..': '..tostring(message)..'\n') end
         return true
     end)
     if not ok or result==false then

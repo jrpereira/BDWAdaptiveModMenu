@@ -98,7 +98,7 @@ function M.choiceRowFromWrapper(wrapper)
             if className(host)=='Overlay' then
                 for n=0,childCount(host)-1 do
                     local marker=childAt(host,n)
-                    if isA(marker,'TextBlock') and (textOf(marker) or ''):match('^AMM_PAIR_HOST_1\n') then
+                    if isA(marker,'TextBlock') and (textOf(marker) or ''):match('^KEM_PAIR_HOST_1\n') then
                         pairHost,pairHostBox=host,box;break
                     end
                 end
@@ -143,7 +143,7 @@ function M.rowsFromScroll(scroll)
         local child=childAt(scroll,i)
         local content=contentOf(child)
         if M.isTextBlock(content) then
-            local path=(textOf(content) or ''):match('^AMM_HEADER_ROW\n(.+)$')
+            local path=(textOf(content) or ''):match('^KEM_HEADER_ROW\n(.+)$')
             if path then
                 local promoted=StaticFindObject(path)
                 if valid(promoted) then child=promoted end
@@ -157,26 +157,26 @@ function M.rowsFromScroll(scroll)
                 if valid(marker) and isA(marker,'TextBlock') then
                     local text=textOf(marker) or ''
                     local function decode(value) return (value:gsub('%%(%x%x)',function(hex) return string.char(tonumber(hex,16)) end)) end
-                    if text:sub(1,14)=='AMM_SETTING_3\n' then
+                    if text:sub(1,14)=='KEM_SETTING_3\n' then
                         local fields={}
                         for value in (text..'\n'):gmatch('(.-)\n') do fields[#fields+1]=value end
                         local count=tonumber(fields[17])
                         if count and count>=0 and count<=64 and #fields==17+count*2 then
                             local setting={id=decode(fields[4]),kind=fields[5],minimum=tonumber(fields[6]),
                                 maximum=tonumber(fields[7]),step=tonumber(fields[8]),decimals=tonumber(fields[9]),
-                                prefix=decode(fields[10]),suffix=decode(fields[11]),ammKeybind=fields[12]=='1',
-                                ammFixedMode=decode(fields[13]),ammPairId=decode(fields[14]),
-                                ammTabsWidth=tonumber(fields[15]),ammPairTargetId=decode(fields[16]),values={},labels={}}
-                            if setting.ammFixedMode=='' then setting.ammFixedMode=nil end
-                            if setting.ammPairId=='' then setting.ammPairId=nil end
-                            if setting.ammPairTargetId=='' then setting.ammPairTargetId=nil end
+                                prefix=decode(fields[10]),suffix=decode(fields[11]),kemKeybind=fields[12]=='1',
+                                kemFixedMode=decode(fields[13]),kemPairId=decode(fields[14]),
+                                kemTabsWidth=tonumber(fields[15]),kemPairTargetId=decode(fields[16]),values={},labels={}}
+                            if setting.kemFixedMode=='' then setting.kemFixedMode=nil end
+                            if setting.kemPairId=='' then setting.kemPairId=nil end
+                            if setting.kemPairTargetId=='' then setting.kemPairTargetId=nil end
                             for item=1,count do setting.values[item]=assert(tonumber(decode(fields[17+item])),'invalid setting identity value') end
                             for item=1,count do setting.labels[item]=decode(fields[17+count+item]) end
                             row.settingIndex=tonumber(fields[2]);row.identityProviderId=decode(fields[3]);row.settingId=setting.id
                             row.dmmSetting=setting
                         end
                     end
-                    if text:match('^AMM_MODE\n') then row.modeState=marker end
+                    if text:match('^KEM_MODE\n') then row.modeState=marker end
                 end
             end
             rows[#rows+1]=row

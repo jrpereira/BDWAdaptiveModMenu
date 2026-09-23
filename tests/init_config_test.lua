@@ -50,7 +50,7 @@ assert(Config.commit(plan,fs));assert(files['config.ini']==complete and fs.write
 assert(not Config.commit({path=plan.path,original=complete,content=complete},fs) and fs.writes==1)
 fs,files=memory({['config.ini']=partial})
 plan.original=partial
-assert(Config.commit(plan,fs));assert(files['config.ini']==complete and not files['config.ini.amm-init.bak'])
+assert(Config.commit(plan,fs));assert(files['config.ini']==complete and not files['config.ini.kem-init.bak'])
 for _,phase in ipairs({'write','verify','backup','install'}) do
     fs,files=memory({['config.ini']=partial})
     local write,rename=fs.write,fs.rename
@@ -62,16 +62,16 @@ for _,phase in ipairs({'write','verify','backup','install'}) do
     end end
     assert(not pcall(Config.commit,plan,fs))
     assert(files['config.ini']==partial,'original must survive '..phase)
-    assert(not files['config.ini.amm-init.tmp'])
+    assert(not files['config.ini.kem-init.tmp'])
 end
 fs,files=memory({['config.ini']=partial})
 local write=fs.write
 fs.write=function(path,text) write(path,text);files['config.ini']='external edit' end
 fails(function() Config.commit(plan,fs) end,'changed during')
 assert(files['config.ini']=='external edit')
-fs,files=memory({['config.ini']=partial,['config.ini.amm-init.bak']='recovery'})
+fs,files=memory({['config.ini']=partial,['config.ini.kem-init.bak']='recovery'})
 fails(function() Config.commit(plan,fs) end,'needs review')
-assert(fs.writes==0 and files['config.ini.amm-init.bak']=='recovery')
+assert(fs.writes==0 and files['config.ini.kem-init.bak']=='recovery')
 fs,files=memory({['config.ini']=partial})
 local rename=fs.rename
 fs.rename=function(a,b)
@@ -79,12 +79,12 @@ fs.rename=function(a,b)
     rename(a,b)
 end
 fails(function() Config.commit(plan,fs) end,'rollback failed')
-assert(files['config.ini']=='external edit' and files['config.ini.amm-init.bak']==partial)
+assert(files['config.ini']=='external edit' and files['config.ini.kem-init.bak']==partial)
 fs,files=memory()
 write=fs.write
 fs.write=function(path,text) write(path,text);files['config.ini']='created externally' end
 fails(function() Config.commit({path='config.ini',content='defaults'},fs) end,'changed during')
-assert(files['config.ini']=='created externally' and not files['config.ini.amm-init.tmp'])
+assert(files['config.ini']=='created externally' and not files['config.ini.kem-init.tmp'])
 
 -- Plan validates paths and DMM compatibility before any writes, restoring its
 -- private parser's fs even when DMM throws.

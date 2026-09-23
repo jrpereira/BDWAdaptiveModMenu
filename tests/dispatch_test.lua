@@ -52,7 +52,7 @@ other.WidgetTree=obj('OtherTree')
 local scroll,wrapper,slider,relay=obj('scroll'),obj('wrapper'),obj('slider'),obj('relay')
 local browser=true
 local row={kind='slider',label='Ability',wrapper=wrapper,slider=slider,identityProviderId='P',settingId='K',
- dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true}}
+ dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',kemKeybind=true}}
 local pageRows={row}
 local routes={}
 for _,o in ipairs({scroll,wrapper,slider,relay}) do routes[o.name]={path='/Transient.'..o.name} end
@@ -235,7 +235,7 @@ emit(activate,'post',owner);emit(activate,'post');untilTime(now)
 local replacementWrapper=obj('replacementWrapper')
 local replacementSlider=obj('replacementSlider')
 row={kind='slider',label='Ability',wrapper=replacementWrapper,slider=replacementSlider,identityProviderId='P',settingId='K',
- dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true}}
+ dmmSetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',kemKeybind=true}}
 pageRows={row}
 snapshot={routes={replacementWrapper={path='/Transient.replacementWrapper'},replacementSlider={path='/Transient.replacementSlider'}},
  widgets={scroll=scroll,replacementWrapper=replacementWrapper,replacementSlider=replacementSlider},
@@ -341,11 +341,11 @@ print('PASS failed adoption bookkeeping does not dismantle an existing decoratio
 
 -- Row order, descriptor order and formatting metadata order are independent.
 local peer={kind='picker',label='Same',wrapper=obj('peerWrapper'),nav=obj('peerNav'),valueWidget=obj('peerValue'),pairHost=obj('peerHost'),identityProviderId='P',settingId='Mode',
- dmmSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},ammPairTargetId='K'}}
+ dmmSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},kemPairTargetId='K'}}
 row.label='Same';row.decoration=nil
 pageRows={peer,row}
-local keySetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',ammKeybind=true,ammPairId='Mode'}
-local modeSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},ammPairTargetId='K'}
+local keySetting={id='K',kind='slider',minimum=0,maximum=254,step=1,decimals=0,prefix='',suffix='',kemKeybind=true,kemPairId='Mode'}
+local modeSetting={id='Mode',kind='picker',values={0,3,-1},labels={'Tap','Hold','Default'},kemPairTargetId='K'}
 row.dmmSetting=keySetting;peer.dmmSetting=modeSetting
 local matched,bound=0,nil
 package.loaded.key_selector.adopt=function() return nil end

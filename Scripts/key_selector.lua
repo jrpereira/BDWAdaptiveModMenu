@@ -69,7 +69,7 @@ local function setText(widget,text)
 end
 
 -- The collapsed child is the row's persistent state. No Lua row registry owns it.
-local markerPrefix='AMM_ROW_1\n'
+local markerPrefix='KEM_ROW_1\n'
 local stateKeys={'initialized','lastName','lastBackingName','wasSelecting','captureName',
     'keyHovered','readWarning','pairIndex','pairHovered','pairLastText'}
 local function encode(value)
@@ -250,7 +250,7 @@ function M.mergePair(instance,modeRow,log,clicks)
     local id=instance.descriptor.providerId..'.'..instance.descriptor.settingId
 
     -- Keep the stock picker row and every stock child UObject in place. Build the visible
-    -- proxy from widgets whose composition paths are already proven elsewhere in AMM:
+    -- proxy from widgets whose composition paths are already proven elsewhere in KEM:
     -- SizeBox -> Overlay -> Border -> TextBlock, plus a transparent sibling Button used
     -- only as a hit target. Keep text in the sibling border composition.
     local pairBox=construct('/Script/UMG.SizeBox',tree)
@@ -400,8 +400,8 @@ function M.tick(instance,log)
     if instance.descriptor.fixedMode and instance.pair then
         if not valid(instance.row.modeState) then instance.pendingClicks=0;return false end
         local state=Discovery.textOf(instance.row.modeState)
-        if state~='AMM_MODE\nfixed' and state~='AMM_MODE\neditable' then instance.pendingClicks=0;return false end
-        local editable=state=='AMM_MODE\neditable'
+        if state~='KEM_MODE\nfixed' and state~='KEM_MODE\neditable' then instance.pendingClicks=0;return false end
+        local editable=state=='KEM_MODE\neditable'
         if instance.modeEditable~=editable then
             instance.pendingClicks=0
             instance.pair.button:SetIsEnabled(editable)

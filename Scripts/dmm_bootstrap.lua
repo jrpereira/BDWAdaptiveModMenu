@@ -3,12 +3,12 @@
 -- gating in this file so the integration transaction has one owner.
 local M={version=1}
 
-local READY='AMM_DMM_Extension_v1.ready'
-local CLAIM='AMM_DMM_Bootstrap_v1.initialized'
+local READY='KEM_DMM_Extension_v1.ready'
+local CLAIM='KEM_DMM_Bootstrap_v1.initialized'
+-- This identifies the DMM 1.0.7 patch format already installed on existing systems.
 local PATCH_MARKER='-- AMM_DMM_LIFECYCLE_PATCH=1'
 local BACKUP_SUFFIX='.amm-1.0.7.bak'
 local NEW_SUFFIX='.amm-new'
-local DEPRECATED_MARKER='AdaptiveModMenu'
 local MAX_FILE=262144
 local WAIT_MS=100
 local WAIT_ATTEMPTS=25
@@ -132,13 +132,6 @@ local function child(node,wanted)
     end
 end
 
-local function file(node,wanted)
-    wanted=wanted:lower()
-    for _,value in pairs(type(node)=='table' and node.__files or {}) do
-        if type(value)=='table' and tostring(value.__name or ''):lower()==wanted then return value end
-    end
-end
-
 local function modsRoot(directories)
     local game=child(directories,'Game')
     if not game and type(directories)=='table' then
@@ -170,10 +163,6 @@ local function runtime()
     end
     return {
         directories=IterateGameDirectories,read=read,write=write,remove=os.remove,rename=os.rename,
-        unload=function(name)
-            if type(UninstallMod)~='function' then return false,'unavailable' end
-            return pcall(UninstallMod,name)
-        end,
         get=function(key) return ModRef and ModRef:GetSharedVariable(key) end,
         set=function(key,value) assert(ModRef,'ModRef unavailable');ModRef:SetSharedVariable(key,value) end,
         schedule=ExecuteWithDelay,
@@ -184,24 +173,6 @@ local function directories(env)
     local ok,value=pcall(env.directories)
     if not ok then return nil,'game directories unavailable: '..tostring(value) end
     return value
-end
-
-local function migrateEnablement(env,gameDirectories)
-    local previous=child(modsRoot(gameDirectories),'ModMenuDecorator')
-    local source=file(previous,'enabled.txt')
-    if not source or type(source.__absolute_path)~='string' then return true end
-    local target=source.__absolute_path:match('^(.+[\\/])[^\\/]+$')..'deprecated.txt'
-    if env.read(target)~=nil then return true end
-    local removed,removeError=env.remove(source.__absolute_path)
-    if not removed and env.read(source.__absolute_path)~=nil then
-        return nil,removeError or 'could not disable previous installation'
-    end
-    local written,err=env.write(target,DEPRECATED_MARKER)
-    if not written or env.read(target)~=DEPRECATED_MARKER then
-        return nil,err or 'could not create deprecation marker'
-    end
-    if type(env.unload)=='function' then env.unload('ModMenuDecorator') end
-    return true
 end
 
 local function locate(env,gameDirectories)
@@ -367,7 +338,7 @@ function M.run(log,initialize,overrides)
     local owner=tostring({}):gsub('%W','')
     local function ready()
         if finished or env.get(READY)~='1' then return false end
-        if env.get(CLAIM) then log('DMM_DUPLICATE_INIT','another AdaptiveModMenu instance already initialized');finished=true;return false end
+        if env.get(CLAIM) then log('DMM_DUPLICATE_INIT','another KEngineMenu instance already initialized');finished=true;return false end
         env.set(CLAIM,owner)
         local ok,result=pcall(initialize)
         if not ok or result==false then
@@ -380,8 +351,6 @@ function M.run(log,initialize,overrides)
 
     local gameDirectories,directoryError=directories(env)
     if not gameDirectories then log('DMM_REQUIRED',directoryError);return false end
-    local migrated,migrationError=migrateEnablement(env,gameDirectories)
-    if not migrated then log('ENABLEMENT_MIGRATION_FAILED',tostring(migrationError));return false end
     local located,paths,locateError=pcall(locate,env,gameDirectories)
     if not located then log('DMM_REQUIRED',tostring(paths));return false end
     if not paths then log('DMM_REQUIRED',locateError);return false end

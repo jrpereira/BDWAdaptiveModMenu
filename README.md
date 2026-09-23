@@ -1,8 +1,8 @@
-# Adaptive Mod Menu
+# KEngineMenu
 
-Adaptive Mod Menu is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
+KEngineMenu (KEM) is a developer tool that extends Dawnwalker Mod Menu with key-binding controls.
 
-Keep using Mod Menu's normal configuration system. Add a little metadata, and Adaptive Mod Menu turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
+Keep using Mod Menu's normal configuration system. Add a little metadata, and KEngineMenu turns an integer setting into a key picker, optionally combining it with a Tap/Hold selector. Mod Menu continues handling Apply, Reset, and saving.
 
 The source also serves as a practical example of extending existing Unreal UI: finding existing controls, adding widgets to their owning page, and connecting custom presentation to the original settings system.
 
@@ -12,7 +12,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Combines key bindings with an optional Tap/Hold control that changes mode on each click.
 - Expands mapped presets into their target keys and modes; manual target edits select Custom.
 - Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
-- Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting replaces the default mod header.
+- Renders pickers as right-aligned tabs and applies six typography levels. On generated module pages, a level-one setting shares the mod page title row above the divider.
 - Supports conditional group help, value-dependent labels and category ordering while preserving existing setting IDs.
 - Supports metadata-based integration through `mod_settings.ini`—no registration code required.
 - Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
@@ -22,7 +22,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Keeps decorations attached to their owning rows and recreates them when pages rebuild.
 - Uses menu-scoped updates without a permanent gameplay polling loop.
 - Provides example configurations and source code for learning how to extend existing Unreal UI.
-- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by UE4SSTemplatingEngine.
+- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by KEngineTemplates.
 - Pairs with UE4SSLuaEventBridge for implementing Enhanced Input and Tap/Hold behavior.
 
 ## Known Issues / Improvements
@@ -37,19 +37,20 @@ See the [documentation on GitHub](https://github.com/jrpereira/BDWAdaptiveModMen
 
 ## Installation
 
-Install the package as `Mods/AdaptiveModMenu`, then enable it through your mod
-manager or UE4SS configuration. The archive does not create `enabled.txt`.
+Install the package as `Mods/_KEngineMenu`, then enable it through your mod
+manager or UE4SS configuration. Remove the old `Mods/AdaptiveModMenu` folder
+before starting the game. The archive does not create `enabled.txt`.
 Restart the game after installing or updating it.
 
 ## Add a key-binding control
 
-In your mod's `mod_settings.ini`, define an integer setting and add `ammType = keybind`:
+In your mod's `mod_settings.ini`, define an integer setting and add `kemType = keybind`:
 
 ```ini
 [Setting.MyAction]
 Id = MyAction
 Type = integer
-ammType = keybind
+kemType = keybind
 Label = My action
 Group = Controls
 ConfigFile = config.ini
@@ -71,7 +72,7 @@ Add a tab picker and point `Pair` at the key setting. The picker owns the compos
 [Setting.MyActionMode]
 Id = MyActionMode
 Type = picker
-ammType = tab
+kemType = tab
 Pair = MyAction
 Label = My action
 Group = Controls
@@ -83,11 +84,11 @@ PresetLabels = Tap|Hold|Default
 Default = -1
 ```
 
-Keep both settings in the same group. If DMM hides `MyAction`, AMM hides only the contributed key component; the mode row, its label and its tabs remain visible.
+Keep both settings in the same group. If DMM hides `MyAction`, KEM hides only the contributed key component; the mode row, its label and its tabs remain visible.
 
 That's it—magic! The key picker and Tap/Hold selector appear together. No registration code is required.
 
-Your mod still interprets the values. Adaptive Mod Menu provides the GUI upgrades, not the input behavior.
+Your mod still interprets the values. KEngineMenu provides the GUI upgrades, not the input behavior.
 
 It also pairs well with [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge), which exposes Unreal's Enhanced Input to Lua, including support for Tap/Hold bindings.
 

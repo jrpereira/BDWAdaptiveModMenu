@@ -151,17 +151,17 @@ i.pendingClicks=3;M.tick(i,log);assert(nav.value==1 and nav.writes==1 and i.pend
 M.tick(i,log);assert(nav.writes==1)
 print('PASS queued short clicks consumed exactly once without IsPressed; net mode preserved')
 function button:SetIsEnabled(value) self.enabled=value end
-i.descriptor.fixedMode='Tap';i.row.modeState=textWidget('AMM_MODE\nfixed')
+i.descriptor.fixedMode='Tap';i.row.modeState=textWidget('KEM_MODE\nfixed')
 i.pair.valueWidget.text='Hold';i.pendingClicks=2
 assert(M.tick(i,log) and i.pair.text.text=='Tap' and button.enabled==false)
 assert(i.pair.text.opacity==0.45,'fixed mode must appear unavailable')
 assert(nav.value==1 and nav.writes==1 and i.pendingClicks==0)
 capture(i,s,'K');assert(slider.writes==1,'Fixed-mode display must not block key capture')
-i.row.modeState.text='AMM_MODE\neditable';i.pendingClicks=1
+i.row.modeState.text='KEM_MODE\neditable';i.pendingClicks=1
 assert(M.tick(i,log) and button.enabled and i.pair.text.text=='Hold' and nav.writes==1,'Transition discards stale clicks')
 assert(i.pair.text.opacity==1,'editable mode must regain normal contrast')
 i.pendingClicks=1;assert(M.tick(i,log) and nav.value==0 and nav.writes==2)
-i.row.modeState.text='AMM_MODE\nfixed';i.pendingClicks=1
+i.row.modeState.text='KEM_MODE\nfixed';i.pendingClicks=1
 assert(M.tick(i,log) and nav.writes==2 and i.pair.text.text=='Tap')
 assert(i.pair.text.opacity==0.45)
 i.row.modeState.alive=false;i.pendingClicks=1

@@ -18,9 +18,6 @@ local function directoryTree(files,options)
         entries[#entries+1]={__name=name,__absolute_path='C:/DMM/Scripts/'..name}
     end
     local mods={__name='Mods',DawnwalkerModMenu={__name='DawnwalkerModMenu',Scripts={__name='Scripts',__files=entries}}}
-    if files['C:/Previous/enabled.txt']~=nil then
-        mods.ModMenuDecorator={__name='ModMenuDecorator',__files={{__name='enabled.txt',__absolute_path='C:/Previous/enabled.txt'}}}
-    end
     return {Game={__name='Game',Binaries={__name='Binaries',Win64={__name='Win64',ue4ss={__name='ue4ss',Mods=mods}}}}}
 end
 
@@ -32,7 +29,6 @@ local function environment(seed,options)
     local scheduled={}
     local writes=0
     local renames=0
-    local unloaded={}
     local env={supported=accepted,patched=completed,patchers=transforms}
     env.directories=function() return directoryTree(files,options) end
     env.read=function(path) return files[path] end
@@ -42,7 +38,6 @@ local function environment(seed,options)
         files[path]=options.corruptWrite==writes and 'corrupt stage' or value;return true
     end
     env.remove=function(path)
-        if options.failRemove and path=='C:/Previous/enabled.txt' then return nil,'injected remove failure' end
         files[path]=nil;return true
     end
     env.rename=function(source,target)
@@ -57,11 +52,10 @@ local function environment(seed,options)
         if files[source]==nil or files[target]~=nil then return nil,'rename rejected' end
         files[target]=files[source];files[source]=nil;return true
     end
-    env.unload=function(name) unloaded[#unloaded+1]=name;return not options.failUnload end
     env.get=function(key) return shared[key] end
     env.set=function(key,value) shared[key]=value end
     env.schedule=function(_,callback) scheduled[#scheduled+1]=callback end
-    return env,files,shared,scheduled,unloaded
+    return env,files,shared,scheduled
 end
 
 local function seedOriginals()
@@ -80,38 +74,10 @@ end
 
 do
     local seed=seedOriginals();seed['C:/Previous/enabled.txt']='enabled'
-    local env,files,_,_,unloaded=environment(seed)
+    local env,files=environment(seed)
     assert(Bootstrap.run(function() end,function() error('unexpected init') end,env)=='waiting')
-    assert(files['C:/Previous/enabled.txt']==nil)
-    assert(files['C:/Previous/deprecated.txt']=='AdaptiveModMenu')
-    assert(#unloaded==1 and unloaded[1]=='ModMenuDecorator')
-end
-
-do
-    local seed=seedOriginals();seed['C:/Previous/enabled.txt']='enabled';seed['C:/Previous/deprecated.txt']='preserved'
-    local env,files,_,_,unloaded=environment(seed)
-    assert(Bootstrap.run(function() end,function() error('unexpected init') end,env)=='waiting')
-    assert(files['C:/Previous/enabled.txt']=='enabled')
-    assert(files['C:/Previous/deprecated.txt']=='preserved')
-    assert(#unloaded==0)
-end
-
-do
-    local seed=seedOriginals();seed['C:/Previous/enabled.txt']='enabled'
-    local env,files,_,_,unloaded=environment(seed,{failRemove=true})
-    local event
-    assert(Bootstrap.run(function(name) event=name end,function() error('unexpected init') end,env)==false)
-    assert(event=='ENABLEMENT_MIGRATION_FAILED')
-    assert(files['C:/Previous/enabled.txt']=='enabled' and files['C:/Previous/deprecated.txt']==nil)
-    assert(#unloaded==0)
-end
-
-do
-    local seed=seedOriginals();seed['C:/Previous/enabled.txt']='enabled'
-    local env,files,_,_,unloaded=environment(seed,{failUnload=true})
-    assert(Bootstrap.run(function() end,function() error('unexpected init') end,env)=='waiting')
-    assert(files['C:/Previous/enabled.txt']==nil and files['C:/Previous/deprecated.txt']=='AdaptiveModMenu')
-    assert(#unloaded==1,'unload failure must not roll back deprecation')
+    assert(files['C:/Previous/enabled.txt']=='enabled' and files['C:/Previous/deprecated.txt']==nil,
+        'KEM must not migrate or disable a previous mod')
 end
 
 do

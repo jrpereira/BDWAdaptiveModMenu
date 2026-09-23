@@ -66,7 +66,11 @@ end
 local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('Enabled','On',{kind='toggle',labels={'Off','On'}})
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
-local all={key,mode,toggle,literal,fallback}
+local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+header.providerId='KEngineTemplates.module.ActionFandango'
+local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+template.providerId='KEngineTemplates'
+local all={key,mode,toggle,literal,fallback,header,template}
 local function star(r)
     for _,w in ipairs(r.shell.children) do if w.text=='*' then return w end end
     error('missing separate star')
@@ -92,9 +96,10 @@ assert(not pcall(function() controller:construct(function() error('construction 
 assert(not controller.busy,'failed construction must restore signal handling')
 controller:bind(all,routes,{[key]=mode})
 assert(#errors==0,table.concat(errors,'\n'))
+assert(#header.shell.children==0,'The level-one title row must not show a dirty star')
 local function changed(r,text) r.valueWidget:SetText({ftext=text});controller:refresh(host) end
 
-for _,r in ipairs(all) do
+for _,r in ipairs({key,mode,toggle,literal,fallback,template}) do
     assert(star(r).visibility==2 and star(r).outer==host.WidgetTree)
     assert(star(r).Slot.horizontal==1 and star(r).Slot.vertical==2 and star(r).Slot.padding.Left==4)
 end
@@ -128,6 +133,18 @@ changed(toggle,'Off *')
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==4 and toggle.valueWidget.text=='Off')
 changed(toggle,'On') -- Restore changes the rendered value and clears the marker.
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==2)
+local signal=widget('TextBlock','KEM_VALUE_DIRTY_1\n0\nOn')
+signal.outer=host.WidgetTree;toggle.shell:AddChildToOverlay(signal)
+controller:bind(all,routes,{[key]=mode})
+signal:SetText({ftext='KEM_VALUE_DIRTY_1\n1\nOff'})
+toggle.valueWidget:SetText({ftext='Off'})
+controller:refresh(host)
+assert(star(toggle).visibility==4 and toggle.valueWidget.text=='Off',
+    'The DMM signal must show dirty state without a value-text suffix')
+signal:SetText({ftext='KEM_VALUE_DIRTY_1\n0\nOff'})
+controller:refresh(host)
+assert(star(toggle).visibility==2,
+    'Apply must clear the star even when the displayed value stays Off')
 changed(fallback,'2 *')
 assert(fallback.labelWidget.Font.SkewAmount==0.2)
 changed(fallback,'1')

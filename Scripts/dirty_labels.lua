@@ -1,7 +1,8 @@
 -- Presentation only: DMM owns dirty state, pending values, Apply and Restore.
 local Discovery=require('widget_discovery')
 local M={}
-local PREFIX='AMM_DIRTY_3\n'
+local PREFIX='KEM_DIRTY_3\n'
+local SIGNAL='KEM_VALUE_DIRTY_1\n'
 local function encode(s) return (s:gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')) end
 local function decode(s) return (s:gsub('%%(%x%x)',function(h) return string.char(tonumber(h,16)) end)) end
 local function name(value) return type(value)=='string' and value or value:ToString() end
@@ -32,9 +33,22 @@ local function readMarker(shell)
             if text:sub(1,#PREFIX)==PREFIX then
                 local fields={}
                 for line in text:sub(#PREFIX+1):gmatch('([^\n]*)\n') do fields[#fields+1]=line end
-                assert(#fields==10,'invalid dirty-label state')
+                assert(#fields==10 or #fields==11,'invalid dirty-label state')
                 return child,{dirty=fields[1]=='1',base=decode(fields[2]),face=decode(fields[3]),
-                    skew=assert(tonumber(fields[4])),italic=decode(fields[5]),italicSkew=assert(tonumber(fields[6])),suppressed=fields[7]=='1',pending=decode(fields[8]),lastValue=decode(fields[9]),rendered=fields[10]}
+                    skew=assert(tonumber(fields[4])),italic=decode(fields[5]),italicSkew=assert(tonumber(fields[6])),suppressed=fields[7]=='1',pending=decode(fields[8]),lastValue=decode(fields[9]),rendered=fields[10],signal=decode(fields[11] or '')}
+            end
+        end
+    end
+end
+local function readSignal(shell)
+    for i=0,Discovery.childCount(shell)-1 do
+        local child=Discovery.childAt(shell,i)
+        if Discovery.isTextBlock(child) then
+            local raw=Discovery.textOf(child) or ''
+            if raw:sub(1,#SIGNAL)==SIGNAL then
+                local flag,clean=raw:sub(#SIGNAL+1):match('^([01])\n(.*)$')
+                assert(flag,'invalid dirty-value signal')
+                return {dirty=flag=='1',clean=clean,raw=raw}
             end
         end
     end
@@ -47,7 +61,7 @@ local function starOf(shell)
 end
 local function serialized(state)
     return PREFIX..table.concat({state.dirty and '1' or '0',encode(state.base),encode(state.face),
-        tostring(state.skew),encode(state.italic),tostring(state.italicSkew),state.suppressed and '1' or '0',encode(state.pending or ''),encode(state.lastValue or ''),state.rendered or ''},'\n')..'\n'
+        tostring(state.skew),encode(state.italic),tostring(state.italicSkew),state.suppressed and '1' or '0',encode(state.pending or ''),encode(state.lastValue or ''),state.rendered or '',encode(state.signal or '')},'\n')..'\n'
 end
 local function styleState(label,dirty)
     local font=label.Font
@@ -156,16 +170,23 @@ function M.new(log)
             local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if Discovery.valid(shell) and Discovery.valid(row.labelWidget) and Discovery.valid(row.valueWidget) then
+                if not (row.dmmSetting and row.dmmSetting.kemHeader
+                    and type(row.providerId)=='string'
+                    and row.providerId:match('^KEngineTemplates%.module%.'))
+                    and Discovery.valid(shell) and Discovery.valid(row.labelWidget)
+                    and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)
                     local record={value=routes[valueId],label=routes[Discovery.address(row.labelWidget)],
                         shell=routes[Discovery.address(shell)],setting=row.dmmSetting}
                     if record.value and record.label and record.shell then
                         local marker,state=readMarker(shell)
-                        local dirty,clean=M.signal(Discovery.textOf(row.valueWidget) or '',row.dmmSetting)
+                        local signal=readSignal(shell)
+                        local dirty,clean
+                        if signal then dirty,clean=signal.dirty,signal.clean
+                        else dirty,clean=M.signal(Discovery.textOf(row.valueWidget) or '',row.dmmSetting) end
                         if not marker then
                             state=styleState(row.labelWidget,dirty)
-                            state.suppressed=false;state.lastValue=clean
+                            state.suppressed=false;state.lastValue=clean;state.signal=signal and signal.raw or ''
                             local tree=shell:GetOuter()
                             marker=StaticConstructObject(StaticFindObject('/Script/UMG.TextBlock'),tree)
                             assert(Discovery.valid(marker),'dirty marker construction failed')
@@ -173,7 +194,9 @@ function M.new(log)
                             setText(marker,serialized(state))
                             assert(shell:AddChildToOverlay(marker),'dirty marker attachment failed')
                         else
-                            if dirty then
+                            if signal then
+                                state.dirty=dirty;state.suppressed=false;state.lastValue=clean;state.signal=signal.raw
+                            elseif dirty then
                                 state.dirty=true;state.suppressed=false;state.lastValue=clean
                             elseif clean~=state.lastValue then
                                 state.dirty=false;state.suppressed=false;state.lastValue=clean
@@ -229,15 +252,18 @@ function M.new(log)
                 if widget and shell then
                     local marker,state=readMarker(shell)
                     if marker and state then
+                        local signal=readSignal(shell)
                         local raw=Discovery.textOf(widget) or ''
-                        local dirty,clean=M.signal(raw,record.setting)
-                        -- AMM writes the clean value back. Seeing that same clean
+                        local dirty,clean
+                        if signal then dirty,clean=signal.dirty,signal.clean
+                        else dirty,clean=M.signal(raw,record.setting) end
+                        -- KEM writes the clean value back. Seeing that same clean
                         -- value on the next tick is not a new DMM notification.
-                        if raw~=state.lastValue then
+                        if (signal and signal.raw~=state.signal) or (not signal and raw~=state.lastValue) then
                             state.dirty=dirty
-                            state.suppressed=dirty and ((state.pending~='' and state.pending==clean)
-                                or (state.suppressed and state.lastValue==clean))
-                            state.pending='';state.lastValue=clean
+                            state.suppressed=not signal and dirty and ((state.pending~='' and state.pending==clean)
+                                or (state.suppressed and state.lastValue==clean)) or false
+                            state.pending='';state.lastValue=clean;state.signal=signal and signal.raw or ''
                             setText(marker,serialized(state));setText(widget,clean)
                             renderRecord(resolve,record)
                         end
