@@ -1,5 +1,5 @@
 {
-  "module": "AdaptiveModMenu",
+  "module": "_KEngineMenu",
   "version_file": "Scripts/main.lua",
   "version_pattern": "local VERSION\\s*=\\s*[\\\"\\x27]([^\\\"\\x27]+)",
   "files": {

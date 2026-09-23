@@ -5,7 +5,7 @@ ModRef={
  SetSharedVariable=function(_,key,value) shared[key]=value end,
 }
 RegisterConsoleCommandHandler=function(command,callback)
- assert(command=='AMM_DMM_Lifecycle_v1');assert(not handler);handler=callback
+ assert(command=='KEM_DMM_Lifecycle_v1');assert(not handler);handler=callback
 end
 local objects={}
 local function object(class,name,address)
@@ -21,7 +21,7 @@ local function object(class,name,address)
  return o
 end
 local viewport=object('GameViewportClient','Viewport',90)
-function viewport:ProcessConsoleExec(command) assert(command=='AMM_DMM_Lifecycle_v1');return handler() end
+function viewport:ProcessConsoleExec(command) assert(command=='KEM_DMM_Lifecycle_v1');return handler() end
 local pc=object('PlayerController','PC',91);pc.Player={IsValid=function() return true end,ViewportClient=viewport}
 local host=object('CommonActivatableWidget','Host',1)
 local tree=object('WidgetTree','Tree',2);host.WidgetTree=tree

@@ -1,7 +1,7 @@
 -- DMM publishes only primitive lifecycle identities across Lua states. UObject
 -- work remains deferred to dmm_binding's game-thread update.
 local M={version=1}
-local COMMAND='AMM_DMM_Lifecycle_v1'
+local COMMAND='KEM_DMM_Lifecycle_v1'
 local CLAIM=COMMAND..'.owner'
 local DATA=COMMAND..'.data'
 local owner=tostring({}):gsub('%W','')

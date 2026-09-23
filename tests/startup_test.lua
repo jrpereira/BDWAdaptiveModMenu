@@ -7,7 +7,7 @@ package.loaded.dmm_bootstrap={run=function(log) log('DMM_REQUIRED','missing DMM'
 dofile('Scripts/main.lua')
 print=originalPrint
 assert(#captured==1 and captured[1]:find('DMM_REQUIRED',1,true))
-assert(not installed,'DMM readiness must gate AMM initialization')
+assert(not installed,'DMM readiness must gate KEM initialization')
 print('PASS startup explains missing DMM and remains inactive')
 package.loaded.dmm_binding={install=function() installed=true;return true end}
 package.loaded.dmm_bootstrap={run=function(_,start) return start() end}

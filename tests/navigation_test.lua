@@ -1,5 +1,5 @@
 package.path='Scripts/?.lua;'..package.path
-local Choices=dofile(assert(os.getenv('TE_DMM_CHOICES')))
+local Choices=dofile(assert(os.getenv('DMM_CHOICES_PATH')))
 local Navigation=require('navigation')
 local InitConfig=require('init_config')
 assert(Navigation.install(Choices))
@@ -7,7 +7,7 @@ local manifest=[[
 [Mod]
 Id=NavigationTest
 [Category.Options]
-ammHeading=0
+kemHeading=0
 [Setting.View]
 Id=View
 Type=picker
@@ -16,8 +16,8 @@ Group=Options
 PresetValues=0|1|2
 PresetLabels=More|Primary|Secondary
 Default=0
-ammNavigation=1
-ammType=tab
+kemNavigation=1
+kemType=tab
 [Setting.Real]
 Id=Real
 Type=integer
@@ -34,8 +34,8 @@ VisibleWhen=View
 VisibleValues=1
 ]]
 local items=Choices.parse(manifest)
-assert(#items==2 and items[1].ammNavigation and not items[2].ammNavigation)
-local path='/tmp/amm-navigation-test/config.ini'
+assert(#items==2 and items[1].kemNavigation and not items[2].kemNavigation)
+local path='/tmp/kem-navigation-test/config.ini'
 local files={[path]='[Settings]\nReal=4\n'}
 Choices.fs={
     read=function(p) return files[p] end,
@@ -43,7 +43,7 @@ Choices.fs={
     rename=function(a,b) assert(files[a]);files[b],files[a]=files[a],nil end,
     remove=function(p) files[p]=nil end,
 }
-local provider={id='NavigationTest',path='/tmp/amm-navigation-test/mod_settings.ini',choices=items}
+local provider={id='NavigationTest',path='/tmp/kem-navigation-test/mod_settings.ini',choices=items}
 local model=Choices.open(provider)
 assert(not model.error,model.error)
 assert(not model:dirty() and not model:visibility()[2])
@@ -69,7 +69,7 @@ assert(model.pending[1]==1 and model.pending[2]==5 and not model:dirty())
 local unsupported=manifest:gsub('%[Setting.View%]',
     '[Setting.Ignored]\nType=unsupported\nId=Ignored\n[Setting.View]')
 local withIgnored=Choices.parse(unsupported)
-assert(#withIgnored==2 and withIgnored[1].ammNavigation,
+assert(#withIgnored==2 and withIgnored[1].kemNavigation,
     'Unsupported settings ignored by DMM must not break navigation parsing')
 local plan=assert(InitConfig.plan(provider,manifest,Choices,Choices.fs,items))
 assert(not plan.content:find('View=',1,true),'config initialization must omit navigation')

@@ -66,10 +66,10 @@ end
 local key,mode,toggle=row('Ability','82',slider),row('Mode','Tap',picker),row('Enabled','On',{kind='toggle',labels={'Off','On'}})
 local literal=row('* Literal label','Option *',{kind='picker',labels={'Option *','Other'}})
 local fallback=row('No italic face','1',slider);fallback.labelWidget.Font.FontObject={}
-local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},ammHeader=true})
-header.providerId='UE4SSTemplatingEngine.module.ActionFandango'
-local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},ammHeader=true})
-template.providerId='UE4SSTemplatingEngine'
+local header=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+header.providerId='KEngineTemplates.module.ActionFandango'
+local template=row('Quickslots','None',{kind='picker',labels={'None','Default'},kemHeader=true})
+template.providerId='KEngineTemplates'
 local all={key,mode,toggle,literal,fallback,header,template}
 local function star(r)
     for _,w in ipairs(r.shell.children) do if w.text=='*' then return w end end
@@ -133,15 +133,15 @@ changed(toggle,'Off *')
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==4 and toggle.valueWidget.text=='Off')
 changed(toggle,'On') -- Restore changes the rendered value and clears the marker.
 assert(toggle.labelWidget.text=='Enabled' and star(toggle).visibility==2)
-local signal=widget('TextBlock','AMM_VALUE_DIRTY_1\n0\nOn')
+local signal=widget('TextBlock','KEM_VALUE_DIRTY_1\n0\nOn')
 signal.outer=host.WidgetTree;toggle.shell:AddChildToOverlay(signal)
 controller:bind(all,routes,{[key]=mode})
-signal:SetText({ftext='AMM_VALUE_DIRTY_1\n1\nOff'})
+signal:SetText({ftext='KEM_VALUE_DIRTY_1\n1\nOff'})
 toggle.valueWidget:SetText({ftext='Off'})
 controller:refresh(host)
 assert(star(toggle).visibility==4 and toggle.valueWidget.text=='Off',
     'The DMM signal must show dirty state without a value-text suffix')
-signal:SetText({ftext='AMM_VALUE_DIRTY_1\n0\nOff'})
+signal:SetText({ftext='KEM_VALUE_DIRTY_1\n0\nOff'})
 controller:refresh(host)
 assert(star(toggle).visibility==2,
     'Apply must clear the star even when the displayed value stays Off')

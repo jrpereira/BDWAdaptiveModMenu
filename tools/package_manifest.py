@@ -36,7 +36,7 @@ def build(root, out=None, expected=None):
     if expected is not None and expected != value:
         raise ValueError('Release version does not match source version')
     module = spec['module']
-    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', module):
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', module):
         raise ValueError('Invalid module name')
     payload = {}
     for dest, src in spec['files'].items():

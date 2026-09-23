@@ -1,6 +1,6 @@
-# Integrating AdaptiveModMenu
+# Integrating KEngineMenu
 
-AdaptiveModMenu replaces explicitly marked Dawnwalker Mod Menu (DMM) numeric key
+KEngineMenu replaces explicitly marked Dawnwalker Mod Menu (DMM) numeric key
 controls with key-capture controls. An optional mode picker is displayed on the same
 row. Your mod continues to own its configuration and gameplay behavior; DMM owns
 pending edits, dirty state, Apply, saving, Reset, and Restore.
@@ -13,16 +13,18 @@ separately. Choosing a key in the menu only changes a setting.
 
 The current implementation targets Dawnwalker with UE4SS/Lua 5.4 and the tested DMM
 widget layout. It is not a generic settings framework for every Unreal game or DMM
-version. Install DMM and AdaptiveModMenu as separate UE4SS mods. Do not copy DMM
+version. Install DMM and KEngineMenu as separate UE4SS mods. Do not copy DMM
 source into your mod. The package uses the directory name
-`AdaptiveModMenu` even though this repository is named `BDWAdaptiveModMenu`.
+`_KEngineMenu` even though this repository is named `BDWAdaptiveModMenu`.
+Remove the old `AdaptiveModMenu` mod folder before starting the game. KEM reads
+`kem*` manifest fields and does not migrate `amm*` metadata or saved settings.
 
 Your provider folder needs `mod_settings.ini` and its own configuration file, for example:
 
 ```text
 Mods/
   DawnwalkerModMenu/
-  AdaptiveModMenu/
+  _KEngineMenu/
     enabled.txt
     Scripts/main.lua
   ExampleMod/
@@ -32,7 +34,7 @@ Mods/
     Scripts/main.lua
 ```
 
-Immediately before DMM opens a provider model, AMM uses DMM's parsed provider
+Immediately before DMM opens a provider model, KEM uses DMM's parsed provider
 settings to initialize its declared configuration. It creates a missing INI or
 adds missing assignments while preserving existing values, comments and unrelated
 keys. This applies to every ordinary provider opened by DMM, whether or not its
@@ -52,14 +54,14 @@ provider's settings page. It adds no polling or gameplay work. Your mod must sti
 handle its own startup defaults because menu initialization can occur later.
 Restart after adding/changing manifest metadata; this is
 not a manifest or configuration hot-reload API. On supported DMM 1.0.7 installs,
-AMM transactionally adds the lifecycle callback API to DMM's Lua files and keeps
+KEM transactionally adds the lifecycle callback API to DMM's Lua files and keeps
 verified `.amm-1.0.7.bak` baselines for rollback. A restart activates that patch.
 
 ## Minimal integration
 
 ### Dirty-label presentation
 
-While the settings menu is open, AMM moves DMM's value-side dirty marker to the
+While the settings menu is open, KEM moves DMM's value-side dirty marker to the
 left of the setting label and italicizes the label. A separate, non-interactive
 TextBlock occupies the existing left gutter; the label text and layout stay unchanged. It uses an italic face from
 the existing font when available, otherwise Slate font skew. Clean values restore
@@ -67,7 +69,7 @@ the original face and skew. This covers recognized sliders, pickers and toggles,
 including settings without key decorations. Key and paired mode changes share
 the visible key row's indicator. Schema-declared literal stars are not removed.
 
-Dirty presentation observes only already-bound rows during AMM's existing
+Dirty presentation observes only already-bound rows during KEM's existing
 menu-scoped update. Presentation state is stored in a collapsed child owned by the
 row. No process-wide text hook, additional polling loop or configuration write is
 used for styling.
@@ -78,7 +80,7 @@ does not expose a second value-mutation API or write settings through UI control
 
 ### Mapped presets
 
-AMM expands mapped presets inside DMM's own pending model. Declare a picker with
+KEM expands mapped presets inside DMM's own pending model. Declare a picker with
 `CustomValue`, a pipe-separated `MappedPresetTargets` list of setting IDs, and
 semicolon-separated `MappedPresetValues` entries. Each entry has the form
 `presetValue:targetValue|targetValue`, in target order. For example:
@@ -105,10 +107,10 @@ preserves its keys and changes the pending picker to Custom.
 
 Dawnwalker Mod Menu loads `Scripts/dmm_extension.lua` from enabled direct mods at
 startup and passes its choices, controls and pages modules through extension API
-version 1. AMM installs its mapped-preset, presentation and migration wrappers in
+version 1. KEM installs its mapped-preset, presentation and migration wrappers in
 that Lua state. No native DLL, additional runtime or gameplay timer is used. The
 startup bootstrap installs the version-checked DMM lifecycle patch described above.
-Install both mods before starting the game; loading AMM after DMM has started does
+Install both mods before starting the game; loading KEM after DMM has started does
 not retrofit the existing page. Restart after installing, removing or updating an
 extension.
 
@@ -129,7 +131,7 @@ The key row's essential fields are:
 [Setting.Interact]
 Id = Interact
 Type = integer
-ammType = keybind
+kemType = keybind
 Label = Interact key
 Group = Controls
 ConfigFile = config.ini
@@ -159,7 +161,7 @@ Add a tab picker that declares the key setting through `Pair`:
 [Setting.InteractMode]
 Id = InteractMode
 Type = picker
-ammType = tab
+kemType = tab
 Pair = Interact
 Label = Interact
 Group = Controls
@@ -202,13 +204,13 @@ supersede it. Seeing a new key label alone is not proof that DMM ingested or sav
 
 ## Discovery and layout constraints
 
-DMM discovers and parses providers. AMM's parser extension enriches those exact
+DMM discovers and parses providers. KEM's parser extension enriches those exact
 in-memory setting objects with decoration metadata, and DMM places the provider ID,
 setting ID, kind and object reference on each row-owned marker during construction.
 Give every provider a unique `[Mod] Id` and every setting an explicit unique `Id`.
 DMM's duplicate-provider policy remains authoritative.
 
-AMM accepts a page only when its row markers identify one provider and contain
+KEM accepts a page only when its row markers identify one provider and contain
 unique setting IDs whose kinds match their DMM setting objects. It does not infer
 identity from row order or localized labels. DMM lifecycle callbacks provide the
 completed provider ScrollBox after construction and after visibility refreshes.
@@ -221,7 +223,7 @@ metadata is the integration surface.
 
 ## Release logging and integration checklist
 
-`UE4SS.log` contains one ready message plus actionable failures under `[AdaptiveModMenu]`.
+`UE4SS.log` contains one ready message plus actionable failures under `[KEngineMenu]`.
 Verbose construction, binding and capture traces are removed; there is no debug-mode toggle.
 Discovery runs once per coalesced DMM provider callback, after DMM completes row
 construction. The callback normally supplies the exact provider ScrollBox; one
@@ -271,13 +273,13 @@ Lua bindings and primitive traversal routes are temporary, discarded on scope ch
 
 ## Optional live inspection helper — UEBridge
 
-UE4SS Bridge – Live Lua MCP (littleRabbit94/ue4ss-bridge, Nexus mod 198) is an optional development/debugging helper, separate from UE4SSLuaEventBridge. AdaptiveModMenu must work fully with UEBridge absent or disabled. Do not add production imports, IPC calls, startup checks, bundled helper files, installer requirements, CI/release requirements, or features that depend on it. Keep any diagnostic scripts and setup instructions separate from production artifacts and explicitly optional.
+UE4SS Bridge – Live Lua MCP (littleRabbit94/ue4ss-bridge, Nexus mod 198) is an optional development/debugging helper, separate from UE4SSLuaEventBridge. KEngineMenu must work fully with UEBridge absent or disabled. Do not add production imports, IPC calls, startup checks, bundled helper files, installer requirements, CI/release requirements, or features that depend on it. Keep any diagnostic scripts and setup instructions separate from production artifacts and explicitly optional.
 
 Use only bounded, targeted inspections and before/after snapshots to test concrete hypotheses about settings widget identity, key/Mode selection, DMM dirty/Apply state, and menu lifecycle. Do not start automatic watches or hooks. Ask the user before taking computer control; helper availability is not permission to interact with the game. Preserve configuration. Disable the helper for performance baselines and verify final fixes with it absent or disabled.
 
 ## Apply notifications
 
-`Scripts/settings_api.lua` is AMM's versioned, game-agnostic consumer API. A mod
+`Scripts/settings_api.lua` is KEM's versioned, game-agnostic consumer API. A mod
 may vendor that file unchanged and subscribe to its own DMM provider ID:
 
 ```lua
@@ -297,28 +299,28 @@ callback.
 
 ## Presentation metadata
 
-`ammType=tab` renders an ordinary picker as right-aligned choices on the
+`kemType=tab` renders an ordinary picker as right-aligned choices on the
 same row as its label. It supports two to eight choices and retains DMM's
 keyboard/controller navigation, pending model and Apply/Restore behavior.
 
-Set `ammNavigation=1` on a picker to use its choices only for menu navigation.
+Set `kemNavigation=1` on a picker to use its choices only for menu navigation.
 The picker can drive ordinary `VisibleWhen` / `VisibleValues` rules, but has no
 config key, never marks the menu dirty, and is omitted from Apply events. Its
 selected view lasts while the menu model is open. Only one navigation picker
-is supported per provider; pair it with `ammType=tab` for horizontal choices.
+is supported per provider; pair it with `kemType=tab` for horizontal choices.
 
-Set `ammTabsWidth` to an integer from 160 through 440 to reserve that total
+Set `kemTabsWidth` to an integer from 160 through 440 to reserve that total
 width in pixels for the horizontal choices. The default grows by option count
-up to 384 pixels. A two-option `ammTabsWidth=440` picker is twice the default
+up to 384 pixels. A two-option `kemTabsWidth=440` picker is twice the default
 220-pixel width while retaining 144 pixels for its label.
 
-`ammLevel=0` inherits the existing font. Levels 1–6 use sizes
+`kemLevel=0` inherits the existing font. Levels 1–6 use sizes
 22, 16, 15, 14, 12 and 11 respectively. Level1 uses the title color;
 Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
 and Category headings without changing control types.
 
-On generated Templating Engine module pages, a setting at typography level 1
+On generated KEngineTemplates module pages, a setting at typography level 1
 shares the mod page title row above the divider. Its setting label is hidden
 while the original control retains its value and navigation. Dirty styling is
 omitted from this title row. The Templates page keeps its level-one settings in
@@ -327,20 +329,20 @@ toggles, pickers and sliders; at most one setting per provider may use level 1.
 No separate header flag is required.
 Mods still implement their settings' behavior.
 
-Categories can declare `ammHelp` to show Level5 explanatory text under
+Categories can declare `kemHelp` to show Level5 explanatory text under
 the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.
 
-Set `ammHeading=0` on a category to suppress only that category's heading:
+Set `kemHeading=0` on a category to suppress only that category's heading:
 
 ```ini
 [Category.Player Actions]
-ammHeading=0
+kemHeading=0
 ```
 
 The category remains a normal DMM group: its rows retain their manifest order,
-visibility rules, navigation and Apply/Restore behavior. Any shared `ammParent`
-heading remains visible while the category has visible rows. `ammHelp` is not
-rendered when its category heading is suppressed. `ammHeading` accepts only
+visibility rules, navigation and Apply/Restore behavior. Any shared `kemParent`
+heading remains visible while the category has visible rows. `kemHelp` is not
+rendered when its category heading is suppressed. `kemHeading` accepts only
 `0` or `1` and defaults to `1`.
 
 Categories can also share a parent heading without flattening that heading into
@@ -348,42 +350,42 @@ each category label:
 
 ```ini
 [Category.PrimaryWheel]
-ammParent=Interaction: Independent
-ammParentLevel=2
-ammLevel=3
+kemParent=Interaction: Independent
+kemParentLevel=2
+kemLevel=3
 
 [Category.SecondaryWheel]
-ammParent=Interaction: Independent
-ammParentLevel=2
-ammLevel=3
+kemParent=Interaction: Independent
+kemParentLevel=2
+kemLevel=3
 
 [Category.SelectiveBindings]
-ammParent=Interaction: Selective
-ammParentLevel=2
-ammLevel=3
+kemParent=Interaction: Selective
+kemParentLevel=2
+kemLevel=3
 ```
 
-`ammParent` is the displayed parent label. Categories with the same exact
+`kemParent` is the displayed parent label. Categories with the same exact
 label share one parent heading and retain their own category headings as
-subgroups. `ammParentLevel` accepts levels 0–6 and defaults to 2; every
+subgroups. `kemParentLevel` accepts levels 0–6 and defaults to 2; every
 category sharing a parent must use the same level. Parent headings do not add
 visibility rules. A provider that wants persistent Independent and Selective
 sections should leave their categories unconditional. If every subgroup under
-a parent is hidden by DMM, AMM hides the otherwise empty parent heading.
+a parent is hidden by DMM, KEM hides the otherwise empty parent heading.
 
 For labels that depend on another picker or toggle, settings and categories
 can declare:
 
 ```ini
-ammLabelWhen=PrimaryWheel
-ammLabels=0:Secondary Wheel;1:Primary Wheel
+kemLabelWhen=PrimaryWheel
+kemLabels=0:Secondary Wheel;1:Primary Wheel
 ```
 
 Unlisted source values retain the original label. Category ordering is opt-in:
 
 ```ini
-ammOrderWhen=PrimaryWheel
-ammOrders=0:20;1:10
+kemOrderWhen=PrimaryWheel
+kemOrders=0:20;1:10
 ```
 
 Only opted-in categories exchange positions, in ascending rank order. Other
@@ -444,7 +446,7 @@ use the original open path. No DMM source files are modified.
 
 ## Fixed mode labels
 
-A standalone keybind can declare `ammMode=Tap` or `ammMode=Hold`. This supplies
+A standalone keybind can declare `kemMode=Tap` or `kemMode=Hold`. This supplies
 a fixed, noninteractive label without creating a second setting. Paired pickers
 instead use the picker-owned `Pair` contract described above.
 
@@ -456,8 +458,8 @@ without a Tap/Hold threshold. This metadata does not implement input behavior.
 [Setting.SharedSlot1]
 Id=SharedSlot1
 Type=integer
-ammType=keybind
-ammMode=Tap
+kemType=keybind
+kemMode=Tap
 ; Include the ordinary range, default and config fields.
 
 ```

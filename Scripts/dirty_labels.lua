@@ -1,8 +1,8 @@
 -- Presentation only: DMM owns dirty state, pending values, Apply and Restore.
 local Discovery=require('widget_discovery')
 local M={}
-local PREFIX='AMM_DIRTY_3\n'
-local SIGNAL='AMM_VALUE_DIRTY_1\n'
+local PREFIX='KEM_DIRTY_3\n'
+local SIGNAL='KEM_VALUE_DIRTY_1\n'
 local function encode(s) return (s:gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')) end
 local function decode(s) return (s:gsub('%%(%x%x)',function(h) return string.char(tonumber(h,16)) end)) end
 local function name(value) return type(value)=='string' and value or value:ToString() end
@@ -170,9 +170,9 @@ function M.new(log)
             local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if not (row.dmmSetting and row.dmmSetting.ammHeader
+                if not (row.dmmSetting and row.dmmSetting.kemHeader
                     and type(row.providerId)=='string'
-                    and row.providerId:match('^UE4SSTemplatingEngine%.module%.'))
+                    and row.providerId:match('^KEngineTemplates%.module%.'))
                     and Discovery.valid(shell) and Discovery.valid(row.labelWidget)
                     and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)
@@ -257,7 +257,7 @@ function M.new(log)
                         local dirty,clean
                         if signal then dirty,clean=signal.dirty,signal.clean
                         else dirty,clean=M.signal(raw,record.setting) end
-                        -- AMM writes the clean value back. Seeing that same clean
+                        -- KEM writes the clean value back. Seeing that same clean
                         -- value on the next tick is not a new DMM notification.
                         if (signal and signal.raw~=state.signal) or (not signal and raw~=state.lastValue) then
                             state.dirty=dirty

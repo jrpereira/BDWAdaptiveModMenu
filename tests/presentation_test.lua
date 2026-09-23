@@ -11,67 +11,69 @@ local items={
 local schema=[[
 [Setting.Primary]
 Id=Primary
-ammType=tab
-ammLevel=2
-ammTabsWidth=440
+kemType=tab
+kemLevel=2
+kemTabsWidth=440
 [Setting.Ability]
 Id=Ability
-ammLabelWhen=Primary
-ammLabels=0:Slot 5;1:Slot 1
+kemLabelWhen=Primary
+kemLabels=0:Slot 5;1:Slot 1
 [Category.Abilities]
-ammHelp=Ability explanation
-ammHeading=0
-ammParent=Interaction: Independent
-ammParentLevel=2
-ammLevel=3
-ammLabelWhen=Primary
-ammLabels=0:Secondary Wheel;1:Primary Wheel
-ammOrderWhen=Primary
-ammOrders=0:20;1:10
+kemHelp=Ability explanation
+kemHeading=0
+kemParent=Interaction: Independent
+kemParentLevel=2
+kemLevel=3
+kemLabelWhen=Primary
+kemLabels=0:Secondary Wheel;1:Primary Wheel
+kemOrderWhen=Primary
+kemOrders=0:20;1:10
 [Category.Consumables]
-ammParent=Interaction: Independent
-ammParentLevel=2
-ammLabelWhen=Primary
-ammLabels=0:Primary Wheel;1:Secondary Wheel
-ammOrderWhen=Primary
-ammOrders=0:10;1:20
+kemParent=Interaction: Independent
+kemParentLevel=2
+kemLabelWhen=Primary
+kemLabels=0:Primary Wheel;1:Secondary Wheel
+kemOrderWhen=Primary
+kemOrders=0:10;1:20
 [Category.Keys]
-ammParent=Interaction: Selective
-ammParentLevel=2
-ammLevel=3
+kemParent=Interaction: Selective
+kemParentLevel=2
+kemLevel=3
 [Setting.Enabled]
 Id=Enabled
-ammLevel=1
+kemLevel=1
 [Setting.Key]
 Id=Key
-ammType=keybind
+kemType=keybind
 [Setting.KeyMode]
 Id=KeyMode
-ammType=tab
+kemType=tab
 Pair=Key
 ]]
 M.parse(schema,items)
-assert(items[1].ammTabs and items[1].ammFont==2 and items[1].ammTabsWidth==440)
-assert(items[2].ammLabelRule.values[0]=='Slot 5')
-assert(items[2].ammGroup.parent==items[3].ammGroup.parent,'Shared parent labels must share one descriptor')
-assert(items[2].ammGroup.parent.label=='Interaction: Independent' and items[2].ammGroup.parent.font==2)
-assert(not items[2].ammGroup.heading and items[3].ammGroup.heading)
-assert(items[5].ammGroup.parent.label=='Interaction: Selective')
-M.parse(schema:gsub('ammType=tab','DecoType=tab'):gsub('ammLevel=2','DecoLevel=2')
-    :gsub('ammTabsWidth=440','DecoTabsWidth=440'):gsub('Pair=Key\n',''),items)
-assert(not items[1].ammTabs and items[1].ammFont==nil,'noncanonical metadata must be ignored')
-assert(not pcall(M.parse,schema:gsub('ammType=tab','ammType=tabs'),items))
-assert(not pcall(M.parse,schema:gsub('ammTabsWidth=440','ammTabsWidth=441'),items))
-assert(not pcall(M.parse,schema:gsub('ammType=tab','ammType=keybind'),items))
-assert(not pcall(M.parse,schema:gsub('ammLevel=1','ammLevel=9'),items))
+assert(items[1].kemTabs and items[1].kemFont==2 and items[1].kemTabsWidth==440)
+assert(items[2].kemLabelRule.values[0]=='Slot 5')
+assert(items[2].kemGroup.parent==items[3].kemGroup.parent,'Shared parent labels must share one descriptor')
+assert(items[2].kemGroup.parent.label=='Interaction: Independent' and items[2].kemGroup.parent.font==2)
+assert(not items[2].kemGroup.heading and items[3].kemGroup.heading)
+assert(items[5].kemGroup.parent.label=='Interaction: Selective')
+M.parse(schema:gsub('kemType=tab','DecoType=tab'):gsub('kemLevel=2','DecoLevel=2')
+    :gsub('kemTabsWidth=440','DecoTabsWidth=440'):gsub('Pair=Key\n',''),items)
+assert(not items[1].kemTabs and items[1].kemFont==nil,'noncanonical metadata must be ignored')
+M.parse(schema:gsub('kem','amm'):gsub('Pair=Key\n',''),items)
+assert(not items[1].kemTabs and items[1].kemFont==nil,'old amm metadata must not be read')
+assert(not pcall(M.parse,schema:gsub('kemType=tab','kemType=tabs'),items))
+assert(not pcall(M.parse,schema:gsub('kemTabsWidth=440','kemTabsWidth=441'),items))
+assert(not pcall(M.parse,schema:gsub('kemType=tab','kemType=keybind'),items))
+assert(not pcall(M.parse,schema:gsub('kemLevel=1','kemLevel=9'),items))
 M.parse(schema,items)
-assert(not pcall(M.parse,schema:gsub('ammLevel=2','ammLevel=9'),items))
-assert(not pcall(M.parse,schema:gsub('ammHeading=0','ammHeading=true'),items))
-assert(not pcall(M.parse,schema:gsub('ammLabelWhen=Primary','ammLabelWhen=Missing'),items))
+assert(not pcall(M.parse,schema:gsub('kemLevel=2','kemLevel=9'),items))
+assert(not pcall(M.parse,schema:gsub('kemHeading=0','kemHeading=true'),items))
+assert(not pcall(M.parse,schema:gsub('kemLabelWhen=Primary','kemLabelWhen=Missing'),items))
 local parentItems={{id='One',kind='toggle',group='One',values={0,1}},{id='Two',kind='toggle',group='Two',values={0,1}}}
-assert(not pcall(M.parse,'[Category.One]\nammParent=\n',parentItems))
-assert(not pcall(M.parse,'[Category.One]\nammParentLevel=2\n',parentItems))
-assert(not pcall(M.parse,'[Category.One]\nammParent=Shared\nammParentLevel=2\n[Category.Two]\nammParent=Shared\nammParentLevel=3\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nkemParent=\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nkemParentLevel=2\n',parentItems))
+assert(not pcall(M.parse,'[Category.One]\nkemParent=Shared\nkemParentLevel=2\n[Category.Two]\nkemParent=Shared\nkemParentLevel=3\n',parentItems))
 M.parse(schema,items)
 local function widget()
     local w={children={},Font={SkewAmount=0},enabled=true,position=0,visible=0}
@@ -150,7 +152,7 @@ local pages={build=function(tree,providers,status,a)
         allRows[#allRows+1]={widget=button,providerIndex=index}
     end
     local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,
-        controls={},modTitle=title,ammTestControlArea=parent,ammTestDivider=divider}
+        controls={},modTitle=title,kemTestControlArea=parent,kemTestDivider=divider}
     function page:refresh(compatibleOnly)
         a.setText(self.filterLabel,compatibleOnly and 'Compatible Mods' or 'All Mods')
     end
@@ -158,7 +160,7 @@ local pages={build=function(tree,providers,status,a)
 end}
 local controls={build=function(tree,providers,a)
     local ui={root=widget(),panels={{rows={},headings={},scroll=widget()}},model={items=items,pending={0,0,0,1,49,-1},committed={0,0,0,1,49,-1}}}
-    ui.ammTestSetText=a.setText
+    ui.kemTestSetText=a.setText
     function ui.model:visibility() return {true,true,true,true,self.pending[1]==1,true} end
     function ui.root:SetActiveWidgetIndex() self.readyEvents=(self.readyEvents or 0)+1 end
     function ui.model:set(i,v) self.pending[i]=v end
@@ -193,16 +195,16 @@ end}
 assert(M.install(choices,controls,pages));assert(not M.install(choices,controls,pages))
 local browserProviders={
     {name='Templates',choices=items},
-    {name='Menu Controls',choices=items,ammBrowserLevel=4,ammBrowserIndent=20},
+    {name='Menu Controls',choices=items,kemBrowserLevel=4,kemBrowserIndent=20},
 }
 local page=pages.build(widget(),browserProviders,nil,api)
 assert(#page.browserList.children==2 and page.browserList.children[2]:GetContent(),
     'Mod-browser title must have a themed divider immediately beneath it')
-assert(page.filterLabel.Font.Size==page.controls.ammHeaderTitle.Font.Size and
-    page.filterLabel.color==page.controls.ammHeaderTitle.color,'Compatible Mods must use the mod-title style')
-assert(page.ammTestControlArea.children[1]==page.controls.ammHeaderHost
-    and page.ammTestControlArea.children[2]==page.ammTestDivider
-    and page.controls.ammHeaderHost.children[1]==page.modTitle
+assert(page.filterLabel.Font.Size==page.controls.kemHeaderTitle.Font.Size and
+    page.filterLabel.color==page.controls.kemHeaderTitle.color,'Compatible Mods must use the mod-title style')
+assert(page.kemTestControlArea.children[1]==page.controls.kemHeaderHost
+    and page.kemTestControlArea.children[2]==page.kemTestDivider
+    and page.controls.kemHeaderHost.children[1]==page.modTitle
     and page.modTitle.visible==4,
     'Mod title must share the first row with the picker above the divider')
 page:refresh(false)
@@ -218,51 +220,51 @@ assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and c
     'Category modules must accept level-four browser styling')
 assert(categoryLabel.Slot.Padding.Left==20,
     'Category modules must accept a small browser indentation')
-local ui=controls.build(widget(),{{id='UE4SSTemplatingEngine.module.ActionFandango',choices=items}},api)
-ui.ammHeaderHost=widget()
+local ui=controls.build(widget(),{{id='KEngineTemplates.module.ActionFandango',choices=items}},api)
+ui.kemHeaderHost=widget()
 ui:show(1)
 local row=ui.panels[1].rows[1]
-assert(#row.ammTabs==2 and row.ammLabel.Font.Size==16)
-assert(row.ammTabs[1].label.Slot.HorizontalAlignment==0 and row.ammTabs[1].label.Slot.VerticalAlignment==2,
+assert(#row.kemTabs==2 and row.kemLabel.Font.Size==16)
+assert(row.kemTabs[1].label.Slot.HorizontalAlignment==0 and row.kemTabs[1].label.Slot.VerticalAlignment==2,
     'Tab labels must fill their allocated button slots for centered text justification')
-assert(row.ammTabs[1].selected and not row.ammTabs[2].selected)
+assert(row.kemTabs[1].selected and not row.kemTabs[2].selected)
 local keyRow,modeRow=ui.panels[1].rows[5],ui.panels[1].rows[6]
-assert(modeRow.ammPairHost and modeRow.ammPairHostBox.visible==1 and keyRow.ammPairOwner==6,
+assert(modeRow.kemPairHost and modeRow.kemPairHostBox.visible==1 and keyRow.kemPairOwner==6,
     'The mode row must own the composite and hide its key host while the key is logically hidden')
-assert(modeRow.ammTabsWidth==150,
+assert(modeRow.kemTabsWidth==150,
     'Paired pickers must use the original 150-pixel mode column')
-assert(#modeRow.ammTabs==2 and modeRow.ammTabs[1].toggleValues[1]==0
-    and modeRow.ammTabs[1].toggleValues[2]==3 and modeRow.ammTabs[1].label.text=='Tap'
-    and modeRow.ammTabs[2].selected,
+assert(#modeRow.kemTabs==2 and modeRow.kemTabs[1].toggleValues[1]==0
+    and modeRow.kemTabs[1].toggleValues[2]==3 and modeRow.kemTabs[1].label.text=='Tap'
+    and modeRow.kemTabs[2].selected,
     'Tap and Hold must share one control while Default remains separate')
-assert(modeRow.ammTabs[1].background:GetParent().WidthOverride==75,
+assert(modeRow.kemTabs[1].background:GetParent().WidthOverride==75,
     'The shared Tap/Hold control must occupy half of the paired mode column')
-local toggleBox=modeRow.ammTabs[1].background:GetParent()
+local toggleBox=modeRow.kemTabs[1].background:GetParent()
 local toggleContainer=toggleBox:GetParent()
-assert(toggleBox.HeightOverride==modeRow.ammPairHostBox.HeightOverride
+assert(toggleBox.HeightOverride==modeRow.kemPairHostBox.HeightOverride
     and toggleContainer.RenderTranslation.X==-75
     and toggleContainer.RenderTranslation.X-toggleBox.WidthOverride
-        -modeRow.ammPairHostBox.RenderTranslation.X==8,
+        -modeRow.kemPairHostBox.RenderTranslation.X==8,
     'The shared mode control must match key height and sit eight pixels to its right')
-assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.RenderTranslation.X==-158,
+assert(modeRow.kemPairHostBox.RenderTranslation and modeRow.kemPairHostBox.RenderTranslation.X==-158,
     'All paired rows must keep the key control in the same fixed column')
-assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
-    and modeRow.ammPairDisablesKey,
+assert(modeRow.kemDefaultBackground.RenderTranslation and modeRow.kemDefaultBackground.RenderTranslation.X==-262
+    and modeRow.kemPairDisablesKey,
     'Default-capable pairs must render only their Default option in the reserved left column')
-assert(modeRow.ammTabs[1].background and modeRow.ammTabs[1].background.BrushColor.A==0.18
-    and modeRow.ammTabs[2].background.BrushColor.A==0.18,
+assert(modeRow.kemTabs[1].background and modeRow.kemTabs[1].background.BrushColor.A==0.18
+    and modeRow.kemTabs[2].background.BrushColor.A==0.18,
     'The shared Tap/Hold button must match the Default background')
-modeRow.ammTabs[1].widget.hovered=true
+modeRow.kemTabs[1].widget.hovered=true
 ui:tick({},function() return false,false,false end,false)
-assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
-    and modeRow.ammTabs[1].background.BrushColor.A==0.22
-    and modeRow.ammTabs[2].background.BrushColor.R==0.12,
+assert(modeRow.kemTabs[1].background.BrushColor.R==0.95
+    and modeRow.kemTabs[1].background.BrushColor.A==0.22
+    and modeRow.kemTabs[2].background.BrushColor.R==0.12,
     'The shared control must retain its hover glow')
-modeRow.ammTabs[1].widget.hovered=false
+modeRow.kemTabs[1].widget.hovered=false
 ui:tick({},function() return false,false,false end,false)
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+assert(modeRow.kemTabs[1].background.BrushColor.A==0.18,
     'Individual paired-tab hover styling must clear on pointer exit')
-assert(ui.panels[1].rows[2].ammLabel.text=='Slot 5')
+assert(ui.panels[1].rows[2].kemLabel.text=='Slot 5')
 local scroll=ui.panels[1].scroll
 local function position(target)
     for n,child in ipairs(scroll.children) do if child==target then return n end end
@@ -275,50 +277,50 @@ local independent
 for _,child in ipairs(scroll.children) do if child.text=='Interaction: Independent' then independent=child end end
 assert(position(independent)<position(ui.panels[1].headings[3].widget),'Parent must precede its subgroup headings')
 assert(position(ui.panels[1].headings[3].widget)<position(ui.panels[1].headings[2].widget),'Primary category must precede secondary')
-assert(ui.panels[1].headings[2].widget.visible==1,'ammHeading=0 must collapse only the category heading')
+assert(ui.panels[1].headings[2].widget.visible==1,'kemHeading=0 must collapse only the category heading')
 assert(ui.panels[1].rows[2].visible and independent.visible==4,'Hidden subgroup heading must retain rows and visible parent')
 local count=scroll:GetChildrenCount()
-row.ammTabs[2].widget.clicked=true
+row.kemTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[1]==1 and row.ammTabs[2].selected)
-assert(modeRow.ammPairHostBox.visible==0 and keyRow.wrapper.visible==1
+assert(ui.model.pending[1]==1 and row.kemTabs[2].selected)
+assert(modeRow.kemPairHostBox.visible==0 and keyRow.wrapper.visible==1
     and modeRow.widget:GetParent().WidthOverride==330,
     'A visible paired key must render inside the mode row while its original row remains collapsed')
-assert(modeRow.ammTabs[2].selected,
+assert(modeRow.kemTabs[2].selected,
     'The mode owner must preserve the negative Default value')
-modeRow.ammTabs[1].widget.clicked=true
+modeRow.kemTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Tap',
+assert(ui.model.pending[6]==0 and modeRow.kemTabs[1].selected and modeRow.kemTabs[1].label.text=='Tap',
     'Clicking the shared mode control from Default must select Tap')
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+assert(modeRow.kemTabs[1].background.BrushColor.A==0.18,
     'Selecting Tap must keep the Default background opacity')
-modeRow.ammTabs[1].widget.hovered=true
+modeRow.kemTabs[1].widget.hovered=true
 ui:tick({},function() return false,false,false end,false)
-assert(modeRow.ammTabs[1].background.BrushColor.R==0.95
-    and modeRow.ammTabs[1].background.BrushColor.A==0.22,
+assert(modeRow.kemTabs[1].background.BrushColor.R==0.95
+    and modeRow.kemTabs[1].background.BrushColor.A==0.22,
     'The active paired mode must match the key hover background')
-modeRow.ammTabs[1].widget.hovered=false
+modeRow.kemTabs[1].widget.hovered=false
 ui:tick({},function() return false,false,false end,false)
-modeRow.ammTabs[1].widget.clicked=true
+modeRow.kemTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[6]==3 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Hold',
+assert(ui.model.pending[6]==3 and modeRow.kemTabs[1].selected and modeRow.kemTabs[1].label.text=='Hold',
     'Clicking the same control must select and display the declared Hold value')
-modeRow.ammTabs[1].widget.clicked=true
+modeRow.kemTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].label.text=='Tap',
+assert(ui.model.pending[6]==0 and modeRow.kemTabs[1].label.text=='Tap',
     'Another click must return to Tap without creating another control')
-modeRow.ammTabs[2].widget.clicked=true
+modeRow.kemTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[6]==-1 and modeRow.ammTabs[2].selected and modeRow.ammTabs[1].label.text=='Tap',
+assert(ui.model.pending[6]==-1 and modeRow.kemTabs[2].selected and modeRow.kemTabs[1].label.text=='Tap',
     'Default must remain selectable without losing the shared control')
-assert(modeRow.ammTabs[1].background.BrushColor.A==0.18,
+assert(modeRow.kemTabs[1].background.BrushColor.A==0.18,
     'Selecting Default again must retain the matching background')
-modeRow.ammTabs[1].widget.clicked=true
+modeRow.kemTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-modeRow.ammTabs[1].widget.clicked=true
+modeRow.kemTabs[1].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[6]==3,'Repeated shared-mode clicks must still reach Hold')
-assert(ui.panels[1].rows[2].ammLabel.text=='Slot 1')
+assert(ui.panels[1].rows[2].kemLabel.text=='Slot 1')
 assert(position(independent)<position(ui.panels[1].headings[2].widget))
 assert(position(ui.panels[1].headings[2].widget)<position(ui.panels[1].headings[3].widget))
 assert(ui.root.readyEvents==1,'Reordering must notify existing decorators that row paths changed')
@@ -326,24 +328,24 @@ ui:refresh();ui:prepare(1);assert(scroll:GetChildrenCount()==count,'No duplicate
 assert(textCount('Interaction: Independent')==1 and textCount('Interaction: Selective')==1,'Reuse must not duplicate parent headings')
 assert(ui.root.readyEvents==1,'Unchanged refresh must not repeat page events')
 local header=ui.panels[1].rows[4]
-assert(header.ammHeader and header.wrapper:GetParent()==ui.ammHeaderHost)
-assert(header.ammPlaceholder.visible==1 and header.ammLabel.Font.Size==22)
-assert(header.ammLabel.Slot.Padding.Left==0 and ui.panels[1].rows[1].ammLabel.Slot.Padding.Left==20,
+assert(header.kemHeader and header.wrapper:GetParent()==ui.kemHeaderHost)
+assert(header.kemPlaceholder.visible==1 and header.kemLabel.Font.Size==22)
+assert(header.kemLabel.Slot.Padding.Left==0 and ui.panels[1].rows[1].kemLabel.Slot.Padding.Left==20,
     'Level-one setting labels must have no stock left indent')
 ui.model.pending[4]=0
-ui.ammTestSetText(header.value,'Off *')
+ui.kemTestSetText(header.value,'Off *')
 assert(header.value.text=='Off','Dirty suffix must never flicker in the value text')
 local signal
 for _,child in ipairs(header.wrapper:GetContent().children) do
-    if child.text and child.text:match('^AMM_VALUE_DIRTY_1\n') then signal=child end
+    if child.text and child.text:match('^KEM_VALUE_DIRTY_1\n') then signal=child end
 end
-assert(signal and signal.text=='AMM_VALUE_DIRTY_1\n1\nOff')
+assert(signal and signal.text=='KEM_VALUE_DIRTY_1\n1\nOff')
 ui.model.committed[4]=0
-ui.ammTestSetText(header.value,'Off')
-assert(signal.text=='AMM_VALUE_DIRTY_1\n0\nOff',
+ui.kemTestSetText(header.value,'Off')
+assert(signal.text=='KEM_VALUE_DIRTY_1\n0\nOff',
     'Apply must signal clean state even when the displayed value text is unchanged')
 ui.model:set(1,0);ui:refresh()
-assert(modeRow.ammPairHostBox.visible==1 and ui.model.pending[6]==3,
+assert(modeRow.kemPairHostBox.visible==1 and ui.model.pending[6]==3,
     'Hiding the paired key must preserve the mode picker and its saved value')
 assert(ui.root.readyEvents==2,'Visibility and ordering changes must coalesce into one page-ready event')
 ui.model.visibilityOverride=true
@@ -357,8 +359,8 @@ items[6].values,items[6].labels={0,3},{'Tap','Hold'}
 local twoMode=controls.build(widget(),{{choices=items}},api)
 twoMode.model.pending[6],twoMode.model.committed[6]=0,0
 twoMode:show(1)
-local toggle=twoMode.panels[1].rows[6].ammTabs
-assert(#toggle==1 and not twoMode.panels[1].rows[6].ammDefaultBackground
+local toggle=twoMode.panels[1].rows[6].kemTabs
+assert(#toggle==1 and not twoMode.panels[1].rows[6].kemDefaultBackground
     and toggle[1].label.text=='Tap' and toggle[1].background:GetParent().WidthOverride==75
     and toggle[1].background:GetParent():GetParent().RenderTranslation.X==-75,
     'A paired mode without Default must render one full-width Tap/Hold control')
@@ -367,29 +369,29 @@ twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return click
 assert(twoMode.model.pending[6]==3 and toggle[1].label.text=='Hold',
     'The two-value pair must toggle to its declared Hold value')
 items[1].group='Player';items[1].label='Quickslots'
-local pickerHeaderSchema=schema:gsub('Id=Primary\nammType=tab\nammLevel=2',
-    'Id=Primary\nammType=tab\nammLevel=1'):gsub('Id=Enabled\nammLevel=1',
-    'Id=Enabled\nammLevel=2')
+local pickerHeaderSchema=schema:gsub('Id=Primary\nkemType=tab\nkemLevel=2',
+    'Id=Primary\nkemType=tab\nkemLevel=1'):gsub('Id=Enabled\nkemLevel=1',
+    'Id=Enabled\nkemLevel=2')
 M.parse(pickerHeaderSchema,items)
-local templatePage=controls.build(widget(),{{id='UE4SSTemplatingEngine',choices=items}},api)
-templatePage.ammHeaderHost=page.controls.ammHeaderHost
-templatePage.ammHeaderTitle=page.modTitle
+local templatePage=controls.build(widget(),{{id='KEngineTemplates',choices=items}},api)
+templatePage.kemHeaderHost=page.controls.kemHeaderHost
+templatePage.kemHeaderTitle=page.modTitle
 templatePage:show(1)
-assert(not templatePage.panels[1].rows[1].ammHeader
+assert(not templatePage.panels[1].rows[1].kemHeader
     and templatePage.panels[1].rows[1].wrapper:GetParent()==templatePage.panels[1].scroll
-    and templatePage.panels[1].rows[1].ammLabel.visible~=1
-    and templatePage.panels[1].rows[1].ammLabel.Font.Size==16
-    and templatePage.panels[1].rows[1].ammLabel.Slot.Padding.Left==20,
+    and templatePage.panels[1].rows[1].kemLabel.visible~=1
+    and templatePage.panels[1].rows[1].kemLabel.Font.Size==16
+    and templatePage.panels[1].rows[1].kemLabel.Slot.Padding.Left==20,
     'Template page must keep its picker in a normally styled and indented row')
-local pickerHeader=controls.build(widget(),{{id='UE4SSTemplatingEngine.module.ActionFandango',choices=items}},api)
-pickerHeader.ammHeaderHost=page.controls.ammHeaderHost
-pickerHeader.ammHeaderTitle=page.modTitle
+local pickerHeader=controls.build(widget(),{{id='KEngineTemplates.module.ActionFandango',choices=items}},api)
+pickerHeader.kemHeaderHost=page.controls.kemHeaderHost
+pickerHeader.kemHeaderTitle=page.modTitle
 pickerHeader:show(1)
-assert(pickerHeader.panels[1].rows[1].ammHeader
-    and pickerHeader.panels[1].rows[1].ammLabel.Slot.Padding.Left==0
-    and pickerHeader.panels[1].rows[1].ammLabel.visible==1
-    and page.controls.ammHeaderHost.children[1]==pickerHeader.panels[1].rows[1].wrapper
-    and page.controls.ammHeaderHost.children[2]==page.modTitle
-    and pickerHeader.panels[1].rows[4].ammLabel.Slot.Padding.Left==20,
+assert(pickerHeader.panels[1].rows[1].kemHeader
+    and pickerHeader.panels[1].rows[1].kemLabel.Slot.Padding.Left==0
+    and pickerHeader.panels[1].rows[1].kemLabel.visible==1
+    and page.controls.kemHeaderHost.children[1]==pickerHeader.panels[1].rows[1].wrapper
+    and page.controls.kemHeaderHost.children[2]==page.modTitle
+    and pickerHeader.panels[1].rows[4].kemLabel.Slot.Padding.Left==20,
     'Level-one picker must share the title row above the divider without a second label')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')

@@ -53,4 +53,4 @@ jobs:
             flags+=(--generate-notes)
           fi
           gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 "${flags[@]}" \
-            --target "$GITHUB_SHA" --title "AdaptiveModMenu $RELEASE_TAG"
+            --target "$GITHUB_SHA" --title "KEngineMenu $RELEASE_TAG"

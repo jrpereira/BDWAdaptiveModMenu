@@ -1,3 +1,9 @@
+# 0.3.0
+
+- Rename the runtime and DMM extension to KEngineMenu (KEM), packaged under `_KEngineMenu`.
+- Use `kem*` manifest metadata and `KEM_` runtime markers without reading old `amm*` metadata or migrating old settings.
+- Keep generated KEngineTemplates module-page title controls separate from its ordinary Templates page.
+
 # 0.2.25
 
 - Place the paired Tap/Hold control beside Key capture and use the same dark background as Default, including when Default is selected.
