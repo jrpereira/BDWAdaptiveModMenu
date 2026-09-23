@@ -22,6 +22,6 @@
     "docs/DEVELOPERS.md": "docs/DEVELOPERS.md",
     "examples/ExampleMod/mod_settings.ini": "examples/ExampleMod/mod_settings.ini",
     "examples/ExampleMod/config.example.ini": "examples/ExampleMod/config.example.ini",
-    "templates/fixes.lua": "templates/fixes.lua"
+    "Scripts/fixes.lua": "Scripts/fixes.lua"
   }
 }

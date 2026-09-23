@@ -1,11 +1,11 @@
-local template=dofile('templates/fixes.lua')
+local template=dofile('Scripts/fixes.lua')
 
 assert(template.collection==nil,'menu fixes template must not declare a collection')
 assert(template.category=='menu.fixes','menu fixes template category changed')
 assert(template.events==nil and template.subscribe==nil,
     'menu fixes template must not declare events')
-assert(template.settings and template.settings.enabled==false,
-    'menu fixes template must be disabled by default')
+assert(template.settings and template.settings.enabled==true,
+    'menu fixes template must be enabled by default')
 
 local eventRegistrations=0
 local textLibrary={}
@@ -23,4 +23,4 @@ for _,name in ipairs({'afterReset','afterSetup','afterCreate','afterSelect'}) do
 end
 assert(eventRegistrations==0,'loading or preparing menu fixes must register no events')
 
-print('PASS inert menu.fixes template defaults disabled and registers no events')
+print('PASS inert menu.fixes template defaults enabled and registers no events')

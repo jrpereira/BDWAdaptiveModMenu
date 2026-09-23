@@ -186,8 +186,8 @@ assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and 
 local modLabel=page.allRows[1].widget:GetContent()
 assert(modLabel.text=='Templates' and modLabel.Font.Size==16 and modLabel.color=='muted',
     'Mod-list labels must use level-two styling')
-assert(page.filterLabel.Slot.Padding.Left==0 and modLabel.Slot.Padding.Left==-20,
-    'Regular Mod Menu entries must align at the requested negative offset')
+assert(page.filterLabel.Slot.Padding.Left==0 and modLabel.Slot.Padding.Left==0,
+    'Regular Mod Menu entries must use normal left alignment')
 local categoryLabel=page.allRows[2].widget:GetContent()
 assert(categoryLabel.text=='Menu Controls' and categoryLabel.Font.Size==14 and categoryLabel.color=='body',
     'Category modules must accept level-four browser styling')
@@ -243,7 +243,7 @@ row.ammTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(ui.model.pending[1]==1 and row.ammTabs[2].selected)
 assert(modeRow.ammPairHostBox.visible==0 and keyRow.wrapper.visible==1
-    and modeRow.widget:GetParent().WidthOverride==226,
+    and modeRow.widget:GetParent().WidthOverride==330,
     'A visible paired key must render inside the mode row while its original row remains collapsed')
 assert(#modeRow.ammTabs==3 and modeRow.ammTabs[3].selected,
     'The mode owner must preserve arbitrary values and select negative defaults by value')

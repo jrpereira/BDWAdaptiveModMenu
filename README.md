@@ -22,6 +22,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Keeps decorations attached to their owning rows and recreates them when pages rebuild.
 - Uses menu-scoped updates without a permanent gameplay polling loop.
 - Provides example configurations and source code for learning how to extend existing Unreal UI.
+- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by UE4SSTemplatingEngine.
 - Pairs with UE4SSLuaEventBridge for implementing Enhanced Input and Tap/Hold behavior.
 
 ## Known Issues / Improvements

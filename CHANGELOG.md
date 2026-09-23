@@ -1,3 +1,9 @@
+# 0.2.20
+
+- Move the bundled `menu.fixes` template to `Scripts/fixes.lua` for TE's module registration path, preserving its identity and enabled default.
+- Use normal left alignment for ordinary Mod Menu entries; keep explicit provider indentation.
+- Correct paired-row and fixes-template regression expectations without changing those runtime behaviors.
+
 # 0.2.19
 
 - Apply paired-picker hover glow to the hovered tab individually instead of across the full tab row.

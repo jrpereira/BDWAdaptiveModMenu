@@ -629,8 +629,8 @@ function M.install(choices,controls,pages)
                 local browserLevel=provider and provider.ammBrowserLevel or 2
                 if not styles[browserLevel] then browserLevel=2 end
                 local indent=provider and provider.ammBrowserIndent
-                if indent==nil then indent=-20 end
-                if type(indent)~='number' or indent< -80 or indent>80 then indent=-20 end
+                if indent==nil then indent=0 end
+                if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
                 M.style(label,browserLevel,api)
                 label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
             end
