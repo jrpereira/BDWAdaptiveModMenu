@@ -318,11 +318,12 @@ Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
 and Category headings without changing control types.
 
-A setting at typography level 1 replaces the default mod title. The original
-control and its label become the header, preserving DMM navigation and values.
-This supports toggles, pickers and sliders; at most one setting per provider may
-use level 1. No separate header flag is required. Providers without a level-one
-setting keep the default title. Mods still implement their settings' behavior.
+A setting at typography level 1 appears below the divider while the mod page
+title remains above it. Its label combines the group and setting names, such as
+`Player Quickslots`, without the stock left indent. The original control stays
+in that row, preserving DMM navigation and values. This supports toggles,
+pickers and sliders; at most one setting per provider may use level 1. No
+separate header flag is required. Mods still implement their settings' behavior.
 
 Categories can declare `ammHelp` to show Level5 explanatory text under
 the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.

@@ -119,21 +119,28 @@ setmetatable(theme,{__index=function() return noop end})
 local api={construct=widget,need=assert,Theme=theme,theme={assets={}},caption=function(_,text) local w=widget();w.text=text;return w end,
     setText=function(w,text) w.text=text end,describe=noop,actions=noop,status=noop,log=noop}
 api.button=function(tree,text) local b=widget();local l=api.caption(tree,text);b:SetContent(l);return b,l end
-local choices={parse=function() return items end}
+local choices={parse=function() return items end,format=function(setting,value)
+    for i,candidate in ipairs(setting.values or {}) do
+        if candidate==value then return setting.labels[i] end
+    end
+    return tostring(value)
+end}
 local pages={build=function(tree,providers,status,a)
     local filterButton,filterLabel=a.button(tree,'Compatible Mods')
     local browserList=widget()
     local filterWrapper=widget();filterWrapper:SetContent(filterButton);browserList:AddChild(filterWrapper)
     local parent=widget()
     local title=a.caption(tree,'Mod Settings');parent:AddChild(title)
-    a.construct('SizeBox')
+    local divider=widget();parent:AddChild(divider)
+    parent:AddChild(widget())
     local allRows={}
     for index,provider in ipairs(providers) do
         local button,label=a.button(tree,provider.name)
         label.Slot:SetPadding({Left=20,Top=4,Right=12,Bottom=4})
         allRows[#allRows+1]={widget=button,providerIndex=index}
     end
-    local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,controls={}}
+    local page={filterButton=filterButton,filterLabel=filterLabel,browserList=browserList,allRows=allRows,
+        controls={},modTitle=title,ammTestControlArea=parent,ammTestDivider=divider}
     function page:refresh(compatibleOnly)
         a.setText(self.filterLabel,compatibleOnly and 'Compatible Mods' or 'All Mods')
     end
@@ -141,6 +148,7 @@ local pages={build=function(tree,providers,status,a)
 end}
 local controls={build=function(tree,providers,a)
     local ui={root=widget(),panels={{rows={},headings={},scroll=widget()}},model={items=items,pending={0,0,0,1,49,-1},committed={0,0,0,1,49,-1}}}
+    ui.ammTestSetText=a.setText
     function ui.model:visibility() return {true,true,true,true,self.pending[1]==1,true} end
     function ui.root:SetActiveWidgetIndex() self.readyEvents=(self.readyEvents or 0)+1 end
     function ui.model:set(i,v) self.pending[i]=v end
@@ -150,12 +158,14 @@ local controls={build=function(tree,providers,a)
         for i,s in ipairs(items) do
             local heading=a.caption(tree,s.group);p.scroll:AddChild(heading)
             p.headings[i]={widget=heading,first=i,last=i,visible=true}
-            local b,l=a.button(tree,s.label);local box=widget();box:SetContent(b)
+            local b,l=a.button(tree,s.label);l.Slot:SetPadding({Left=20,Top=0,Right=8,Bottom=0})
+            local box=widget();box:SetContent(b)
             local bg=widget();local overlay=widget();overlay:AddChild(bg);overlay:AddChild(box)
+            local value=a.caption(tree,'');overlay:AddChild(value)
             local parts={}
             for n=1,3 do local b2=a.button(tree,'');local size=widget();size:SetContent(b2);overlay:AddChild(size);parts[n]={widget=b2} end
             local wrapper=widget();wrapper:SetContent(overlay);p.scroll:AddChild(wrapper)
-            p.rows[i]={widget=b,background=bg,parts=parts,wrapper=wrapper,nav=widget(),visible=true}
+            p.rows[i]={widget=b,value=value,background=bg,parts=parts,wrapper=wrapper,nav=widget(),visible=true}
         end
         p.built=true
     end
@@ -180,6 +190,10 @@ assert(#page.browserList.children==2 and page.browserList.children[2]:GetContent
     'Mod-browser title must have a themed divider immediately beneath it')
 assert(page.filterLabel.Font.Size==page.controls.ammHeaderTitle.Font.Size and
     page.filterLabel.color==page.controls.ammHeaderTitle.color,'Compatible Mods must use the mod-title style')
+assert(page.ammTestControlArea.children[1]==page.modTitle
+    and page.ammTestControlArea.children[2]==page.ammTestDivider
+    and page.ammTestControlArea.children[3]==page.controls.ammHeaderHost,
+    'Mod title must remain above the divider with level-one controls below it')
 page:refresh(false)
 assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and page.filterLabel.color=='title',
     'Filter text changes must retain the mod-title style')
@@ -303,6 +317,20 @@ assert(ui.root.readyEvents==1,'Unchanged refresh must not repeat page events')
 local header=ui.panels[1].rows[4]
 assert(header.ammHeader and header.wrapper:GetParent()==ui.ammHeaderHost)
 assert(header.ammPlaceholder.visible==1 and header.ammLabel.Font.Size==22)
+assert(header.ammLabel.Slot.Padding.Left==0 and ui.panels[1].rows[1].ammLabel.Slot.Padding.Left==20,
+    'Level-one setting labels must have no stock left indent')
+ui.model.pending[4]=0
+ui.ammTestSetText(header.value,'Off *')
+assert(header.value.text=='Off','Dirty suffix must never flicker in the value text')
+local signal
+for _,child in ipairs(header.wrapper:GetContent().children) do
+    if child.text and child.text:match('^AMM_VALUE_DIRTY_1\n') then signal=child end
+end
+assert(signal and signal.text=='AMM_VALUE_DIRTY_1\n1\nOff')
+ui.model.committed[4]=0
+ui.ammTestSetText(header.value,'Off')
+assert(signal.text=='AMM_VALUE_DIRTY_1\n0\nOff',
+    'Apply must signal clean state even when the displayed value text is unchanged')
 ui.model:set(1,0);ui:refresh()
 assert(modeRow.ammPairHostBox.visible==1 and ui.model.pending[6]==3,
     'Hiding the paired key must preserve the mode picker and its saved value')
@@ -327,4 +355,16 @@ toggle[1].widget.clicked=true
 twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
 assert(twoMode.model.pending[6]==3 and toggle[1].label.text=='Hold',
     'The two-value pair must toggle to its declared Hold value')
+items[1].group='Player';items[1].label='Quickslots'
+local pickerHeaderSchema=schema:gsub('Id=Primary\nammType=tab\nammLevel=2',
+    'Id=Primary\nammType=tab\nammLevel=1'):gsub('Id=Enabled\nammLevel=1',
+    'Id=Enabled\nammLevel=2')
+M.parse(pickerHeaderSchema,items)
+local pickerHeader=controls.build(widget(),{{choices=items}},api)
+pickerHeader.ammHeaderHost=widget();pickerHeader:show(1)
+assert(pickerHeader.panels[1].rows[1].ammHeader
+    and pickerHeader.panels[1].rows[1].ammLabel.Slot.Padding.Left==0
+    and pickerHeader.panels[1].rows[1].ammLabel.text=='Player Quickslots'
+    and pickerHeader.panels[1].rows[4].ammLabel.Slot.Padding.Left==20,
+    'Level-one picker must show Player Quickslots below the divider without indentation')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')

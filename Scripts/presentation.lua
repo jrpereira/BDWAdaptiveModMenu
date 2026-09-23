@@ -1,6 +1,7 @@
 -- Runs in DMM's Lua state. Uses its existing menu tick and model, never a timer.
 local M={version=1}
 local pairHostMarkerPrefix='AMM_PAIR_HOST_1\n'
+local dirtySignalPrefix='AMM_VALUE_DIRTY_1\n'
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
     return tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
@@ -159,8 +160,21 @@ function M.install(choices,controls,pages)
     choices.parse=function(content) return M.parse(content,parse(content)) end
     controls.build=function(tree,providers,api)
         local adapted,labels,helpWidgets={},{},{}
+        local valueSignals={}
+        local ui
         local constructing,pendingHelp
         for k,v in pairs(api) do adapted[k]=v end
+        adapted.setText=function(widget,value)
+            local signal=valueSignals[widget]
+            if not signal then return api.setText(widget,value) end
+            local setting=ui.model and ui.model.items[signal.index]
+            local clean=setting and not ui.model.error
+                and choices.format(setting,ui.model.pending[signal.index]) or nil
+            local dirty=clean~=nil and value==clean..' *'
+            local display=dirty and clean or value
+            api.setText(signal.marker,dirtySignalPrefix..(dirty and '1' or '0')..'\n'..display)
+            return api.setText(widget,display)
+        end
         adapted.caption=function(owner,text)
             local label=api.caption(owner,text)
             if constructing then
@@ -182,7 +196,7 @@ function M.install(choices,controls,pages)
             end
             local button,label=api.button(...);labels[button]=label;return button,label
         end
-        local ui=build(tree,providers,adapted)
+        ui=build(tree,providers,adapted)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
         local function styleBackground(tab,hovered)
             if not tab.background then return end
@@ -209,13 +223,28 @@ function M.install(choices,controls,pages)
                 local identity=api.caption(tree,settingIdentity(i,providers[index],setting))
                 identity:SetVisibility(1)
                 add(row.wrapper:GetContent(),identity)
+                if row.value then
+                    local marker=api.caption(tree,dirtySignalPrefix..'0\n')
+                    marker:SetVisibility(1)
+                    add(row.wrapper:GetContent(),marker)
+                    valueSignals[row.value]={marker=marker,index=i}
+                end
                 if setting.ammFixedMode then
                     row.ammModeState=api.caption(tree,'AMM_MODE\nfixed')
                     row.ammModeState:SetVisibility(1)
                     add(row.wrapper:GetContent(),row.ammModeState)
                 end
                 M.style(row.ammLabel,setting.ammFont,api)
+                if setting.ammFont==1 then
+                    local slot=setting.kind=='toggle' and row.widget:GetContent().Slot or row.ammLabel.Slot
+                    local padding=slot.Padding
+                    slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
+                end
                 if setting.ammHeader and ui.ammHeaderHost then
+                    local label=setting.group and setting.group~='' and setting.group~='Settings'
+                        and (setting.group..' '..setting.label) or setting.label
+                    api.setText(row.ammLabel,label)
+                    row.ammLabelText=label
                     assert(not panel.ammHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
@@ -441,7 +470,6 @@ function M.install(choices,controls,pages)
                     tab.pressed,tab.pointer=false,false
                 end
             end
-            if self.ammHeaderTitle then self.ammHeaderTitle:SetVisibility(self.panels[self.active].ammHeader and 1 or 4) end
             for index,panel in ipairs(self.panels) do
                 if index~=self.active and panel.ammHeader then panel.ammHeader.wrapper:SetVisibility(1) end
             end
@@ -606,32 +634,24 @@ function M.install(choices,controls,pages)
     if pages then
         local buildPages=pages.build
         pages.build=function(tree,providers,status,api)
-            local adapted={};for k,v in pairs(api) do adapted[k]=v end
-            local title,host
-            adapted.caption=function(owner,text)
-                local label=api.caption(owner,text)
-                if not title and text==(api.t and api.t('Mod Settings') or 'Mod Settings') then title=label end
-                return label
+            local page=buildPages(tree,providers,status,api)
+            local title=assert(page.modTitle,'AMM page title')
+            local parent=assert(title:GetParent(),'AMM page header parent')
+            local host=api.construct('/Script/UMG.HorizontalBox',tree)
+            local children={}
+            for n=0,parent:GetChildrenCount()-1 do
+                local child=parent:GetChildAt(n)
+                local padding=child.Slot.Padding
+                children[#children+1]={widget=child,padding={
+                    Left=padding.Left,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom}}
             end
-            adapted.construct=function(...)
-                if title and not host then
-                    local parent=title:GetParent()
-                    if parent and parent:IsValid() then
-                        -- At this point the title is the area's only child;
-                        -- compose its header before DMM constructs any rows.
-                        local line=api.construct('/Script/UMG.HorizontalBox',tree)
-                        host=api.construct('/Script/UMG.HorizontalBox',tree)
-                        assert(parent:RemoveChild(title),'AMM header title detach')
-                        api.need(parent:AddChild(line),'AMM header')
-                        local slot=api.need(line:AddChild(title),'AMM header title')
-                        slot:SetSize({SizeRule=1,Value=1});slot:SetVerticalAlignment(2)
-                        api.need(line:AddChild(host),'AMM header controls')
-                        M.style(title,1,api)
-                    end
-                end
-                return api.construct(...)
+            assert(#children>=2 and children[1].widget==title,'AMM page header layout')
+            parent:ClearChildren()
+            for index,child in ipairs(children) do
+                api.need(parent:AddChild(child.widget),'AMM page header child'):SetPadding(child.padding)
+                if index==2 then api.need(parent:AddChild(host),'AMM controls below divider') end
             end
-            local page=buildPages(tree,providers,status,adapted)
+            M.style(title,1,api)
             M.style(page.filterLabel,1,api)
             page.filterLabel.Slot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
             local header=assert(page.filterButton:GetParent(),'AMM mod-browser header')
