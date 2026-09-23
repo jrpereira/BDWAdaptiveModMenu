@@ -133,6 +133,16 @@ local pages={build=function(tree,providers,status,a)
     local title=a.caption(tree,'Mod Settings');parent:AddChild(title)
     local divider=widget();parent:AddChild(divider)
     parent:AddChild(widget())
+    -- UE4SS may return another Lua wrapper for the same UMG widget.
+    local titleWrapper={Slot=title.Slot,GetFullName=function() return title:GetFullName() end}
+    local getChildAt,addChild=parent.GetChildAt,parent.AddChild
+    function parent:GetChildAt(n)
+        local child=getChildAt(self,n)
+        return child==title and titleWrapper or child
+    end
+    function parent:AddChild(child)
+        return addChild(self,child==titleWrapper and title or child)
+    end
     local allRows={}
     for index,provider in ipairs(providers) do
         local button,label=a.button(tree,provider.name)

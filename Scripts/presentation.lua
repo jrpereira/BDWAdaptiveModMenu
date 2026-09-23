@@ -645,7 +645,8 @@ function M.install(choices,controls,pages)
                 children[#children+1]={widget=child,padding={
                     Left=padding.Left,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom}}
             end
-            assert(#children>=2 and children[1].widget==title,'AMM page header layout')
+            assert(#children>=2 and children[1].widget:GetFullName()==title:GetFullName(),
+                'AMM page header layout')
             parent:ClearChildren()
             for index,child in ipairs(children) do
                 api.need(parent:AddChild(child.widget),'AMM page header child'):SetPadding(child.padding)
