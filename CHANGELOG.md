@@ -1,3 +1,8 @@
+# 0.2.21
+
+- Render paired Tap/Hold modes in one full-width control that toggles on click; keep an optional Default mode in its separate reserved column.
+- Preserve declared numeric mode values and standalone tab pickers.
+
 # 0.2.20
 
 - Move the bundled `menu.fixes` template to `Scripts/fixes.lua` for TE's module registration path, preserving its identity and enabled default.

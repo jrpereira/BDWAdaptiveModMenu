@@ -9,7 +9,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 ## Features
 
 - Upgrades Dawnwalker Mod Menu integer settings into interactive key-binding pickers.
-- Combines key bindings with optional Tap/Hold selectors.
+- Combines key bindings with an optional Tap/Hold control that changes mode on each click.
 - Expands mapped presets into their target keys and modes; manual target edits select Custom.
 - Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
 - Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting replaces the default mod header.

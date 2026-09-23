@@ -206,6 +206,10 @@ assert(modeRow.ammPairHost and modeRow.ammPairHostBox.visible==1 and keyRow.ammP
     'The mode row must own the composite and hide its key host while the key is logically hidden')
 assert(modeRow.ammTabsWidth==150,
     'Paired pickers must use the original 150-pixel mode column')
+assert(#modeRow.ammTabs==2 and modeRow.ammTabs[1].toggleValues[1]==0
+    and modeRow.ammTabs[1].toggleValues[2]==3 and modeRow.ammTabs[1].label.text=='Tap'
+    and modeRow.ammTabs[2].selected,
+    'Tap and Hold must share one control while Default remains separate')
 assert(modeRow.ammPairHostBox.RenderTranslation and modeRow.ammPairHostBox.RenderTranslation.X==-158,
     'All paired rows must keep the key control in the same fixed column')
 assert(modeRow.ammDefaultBackground.RenderTranslation and modeRow.ammDefaultBackground.RenderTranslation.X==-262
@@ -245,12 +249,29 @@ assert(ui.model.pending[1]==1 and row.ammTabs[2].selected)
 assert(modeRow.ammPairHostBox.visible==0 and keyRow.wrapper.visible==1
     and modeRow.widget:GetParent().WidthOverride==330,
     'A visible paired key must render inside the mode row while its original row remains collapsed')
-assert(#modeRow.ammTabs==3 and modeRow.ammTabs[3].selected,
-    'The mode owner must preserve arbitrary values and select negative defaults by value')
+assert(modeRow.ammTabs[2].selected,
+    'The mode owner must preserve the negative Default value')
+modeRow.ammTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Tap',
+    'Clicking the shared mode control from Default must select Tap')
+modeRow.ammTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==3 and modeRow.ammTabs[1].selected and modeRow.ammTabs[1].label.text=='Hold',
+    'Clicking the same control must select and display the declared Hold value')
+modeRow.ammTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==0 and modeRow.ammTabs[1].label.text=='Tap',
+    'Another click must return to Tap without creating another control')
 modeRow.ammTabs[2].widget.clicked=true
 ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
-assert(ui.model.pending[6]==3 and modeRow.ammTabs[2].selected,
-    'Mode tabs must navigate by position while storing their declared numeric value')
+assert(ui.model.pending[6]==-1 and modeRow.ammTabs[2].selected and modeRow.ammTabs[1].label.text=='Tap',
+    'Default must remain selectable without losing the shared control')
+modeRow.ammTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+modeRow.ammTabs[1].widget.clicked=true
+ui:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(ui.model.pending[6]==3,'Repeated shared-mode clicks must still reach Hold')
 assert(ui.panels[1].rows[2].ammLabel.text=='Slot 1')
 assert(position(independent)<position(ui.panels[1].headings[2].widget))
 assert(position(ui.panels[1].headings[2].widget)<position(ui.panels[1].headings[3].widget))
@@ -272,4 +293,16 @@ assert(ui.root.readyEvents==3,'Visibility-only changes must notify decorators af
 ui:refresh();assert(ui.root.readyEvents==3,'Stable visibility must not repeat page-ready events')
 ui.active=nil;local calls=0
 ui:tick({},function() calls=calls+1 end,false);assert(calls==0,'Closed menus never inspect tabs')
+items[6].values,items[6].labels={0,3},{'Tap','Hold'}
+local twoMode=controls.build(widget(),{{choices=items}},api)
+twoMode.model.pending[6],twoMode.model.committed[6]=0,0
+twoMode:show(1)
+local toggle=twoMode.panels[1].rows[6].ammTabs
+assert(#toggle==1 and not twoMode.panels[1].rows[6].ammDefaultBackground
+    and toggle[1].label.text=='Tap',
+    'A paired mode without Default must render one full-width Tap/Hold control')
+toggle[1].widget.clicked=true
+twoMode:tick({},function(w) local clicked=w.clicked;w.clicked=false;return clicked,false,false end,false)
+assert(twoMode.model.pending[6]==3 and toggle[1].label.text=='Hold',
+    'The two-value pair must toggle to its declared Hold value')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')

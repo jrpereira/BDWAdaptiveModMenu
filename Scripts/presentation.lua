@@ -237,17 +237,28 @@ function M.install(choices,controls,pages)
                     local totalWidth=paired and 150 or (setting.ammTabsWidth or math.min(384,110*count))
                     local keySpace=paired and 104 or 0
                     local defaultSpace=paired and 104 or 0
-                    local modeCount=disablesKey and count-1 or count
+                    local choices={}
+                    for n,value in ipairs(setting.values) do
+                        if not paired or n~=2 or count<2 then
+                            local choice={value=value,label=setting.labels[n],isDefault=disablesKey and n==3}
+                            if paired and n==1 and count>=2 then
+                                choice.toggleValues={setting.values[1],setting.values[2]}
+                                choice.toggleLabels={setting.labels[1],setting.labels[2]}
+                            end
+                            choices[#choices+1]=choice
+                        end
+                    end
+                    local modeCount=#choices-(disablesKey and 1 or 0)
                     local width=totalWidth/modeCount
                     local defaultTabs=disablesKey and new('HorizontalBox') or nil
                     if paired then row.ammTabsBackgrounds={} end
-                    for n,value in ipairs(setting.values) do
-                        local button,label=api.button(tree,setting.labels[n]);button.IsFocusable=false
+                    for _,choice in ipairs(choices) do
+                        local button,label=api.button(tree,choice.label);button.IsFocusable=false
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
                         -- Stretch the text block across the fixed-width button, then
                         -- let centered text justification position its contents.
                         label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
-                        local isDefault=disablesKey and n==3
+                        local isDefault=choice.isDefault
                         local visible=button
                         local background
                         if paired then
@@ -258,8 +269,9 @@ function M.install(choices,controls,pages)
                             visible=background
                         end
                         add(isDefault and defaultTabs or tabs,sized(visible,isDefault and 96 or width))
-                        row.ammTabs[n]={widget=button,label=label,value=value,pressed=false,pointer=false,
-                            background=background}
+                        row.ammTabs[#row.ammTabs+1]={widget=button,label=label,value=choice.value,
+                            toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
+                            pressed=false,pointer=false,background=background}
                     end
                     local overlay=row.background:GetParent()
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
@@ -396,7 +408,13 @@ function M.install(choices,controls,pages)
                 for _,tab in ipairs(row.ammTabs or {}) do
                     local mapping=self.model.items[i].ammMapping
                     local enabled=not self.model.error and (not mapping or tab.value~=mapping.custom)
-                    local selected=self.model.pending[i]==tab.value
+                    local current=self.model.pending[i]
+                    local selected=tab.toggleValues and
+                        (current==tab.toggleValues[1] or current==tab.toggleValues[2]) or current==tab.value
+                    if tab.toggleValues then
+                        local display=current==tab.toggleValues[2] and tab.toggleLabels[2] or tab.toggleLabels[1]
+                        if tab.display~=display then api.setText(tab.label,display);tab.display=display end
+                    end
                     if tab.selected~=selected or tab.enabled~=enabled then
                         api.Theme.textColor(tab.label,selected and 'menuActive' or 'body')
                         tab.widget:SetIsEnabled(enabled)
@@ -536,7 +554,12 @@ function M.install(choices,controls,pages)
                             local clicked
                             clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.hovered)
                             if clicked and tab.enabled then
-                                self:select(i,false);self.model:set(i,tab.value);self:refresh()
+                                local value=tab.value
+                                if tab.toggleValues then
+                                    value=self.model.pending[i]==tab.toggleValues[1]
+                                        and tab.toggleValues[2] or tab.toggleValues[1]
+                                end
+                                self:select(i,false);self.model:set(i,value);self:refresh()
                                 if api.feedback then api.feedback('Change') end
                                 return tick(self,queued,released,controller)
                             end

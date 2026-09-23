@@ -175,6 +175,10 @@ The picker that declares `Pair` owns the composite row and supplies its visible
 label. The target key setting contributes only its key control. If DMM visibility
 hides the key setting, the key control disappears while the picker retains its
 normal full-width row. Pairing is ID-based and does not depend on row order.
+The first two declared modes share one control: its label shows the selected mode,
+and each click switches to the other declared value. An optional third `-1`
+Default mode remains a separate control; clicking the shared control from Default
+selects the first mode. Standalone tab pickers keep one button per value.
 
 A picker without explicit decoration remains a stock control. No mode row is
 required for a standalone keybind. Use matching ordered `PresetValues` and
