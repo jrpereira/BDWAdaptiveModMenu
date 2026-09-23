@@ -184,6 +184,15 @@ function M.install(choices,controls,pages)
         end
         local ui=build(tree,providers,adapted)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
+        local function styleBackground(tab,hovered)
+            if not tab.background then return end
+            local dimmed=tab.defaultDimmed==true
+            if tab.backgroundHovered==hovered and tab.backgroundDimmed==dimmed then return end
+            tab.background:SetBrushColor(hovered
+                and {R=0.95,G=0.63,B=0.08,A=dimmed and 0.14 or 0.22}
+                or {R=0.12,G=0.12,B=0.12,A=dimmed and 0.10 or 0.18})
+            tab.backgroundHovered,tab.backgroundDimmed=hovered,dimmed
+        end
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
         local function add(parent,child) return api.need(parent:AddChild(child),'AMM presentation child') end
         local function sized(child,width)
@@ -418,6 +427,8 @@ function M.install(choices,controls,pages)
                     if tab.toggleValues then
                         local display=current==tab.toggleValues[2] and tab.toggleLabels[2] or tab.toggleLabels[1]
                         if tab.display~=display then api.setText(tab.label,display);tab.display=display end
+                        tab.defaultDimmed=row.ammPairDisablesKey and current==-1
+                        styleBackground(tab,tab.hovered==true)
                     end
                     if tab.selected~=selected or tab.enabled~=enabled then
                         api.Theme.textColor(tab.label,selected and 'menuActive' or 'body')
@@ -547,12 +558,7 @@ function M.install(choices,controls,pages)
                     if row.visible then
                         for _,tab in ipairs(row.ammTabs or {}) do
                             tab.hovered=tab.widget:IsHovered()==true
-                            if tab.background and tab.backgroundHovered~=tab.hovered then
-                                tab.background:SetBrushColor(tab.hovered
-                                    and {R=0.95,G=0.63,B=0.08,A=0.22}
-                                    or {R=0.12,G=0.12,B=0.12,A=0.18})
-                                tab.backgroundHovered=tab.hovered
-                            end
+                            styleBackground(tab,tab.hovered)
                         end
                         for _,tab in ipairs(row.ammTabs or {}) do
                             local clicked

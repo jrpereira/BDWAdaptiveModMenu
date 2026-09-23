@@ -1,3 +1,7 @@
+# 0.2.23
+
+- Soften the shared Tap/Hold background while Default is selected, including its hover glow.
+
 # 0.2.22
 
 - Reduce the shared paired Tap/Hold control to half of its reserved 150-pixel mode column without changing key or Default placement.
