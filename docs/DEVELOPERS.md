@@ -129,7 +129,7 @@ The key row's essential fields are:
 [Setting.Interact]
 Id = Interact
 Type = integer
-DecoType = keybind
+ammType = keybind
 Label = Interact key
 Group = Controls
 ConfigFile = config.ini
@@ -153,14 +153,15 @@ silently substituted.
 
 ## Pairing a mode picker
 
-Add a picker with `Id = InteractMode` and **its own** `DecoType = keybind`:
+Add a tab picker that declares the key setting through `Pair`:
 
 ```ini
 [Setting.InteractMode]
 Id = InteractMode
 Type = picker
-DecoType = keybind
-Label = Interact mode
+ammType = tab
+Pair = Interact
+Label = Interact
 Group = Controls
 ConfigFile = config.ini
 ConfigSection = Bindings
@@ -170,10 +171,14 @@ PresetLabels = Tap|Hold
 Default = 0
 ```
 
-By convention a primary ID `Interact` pairs with `InteractMode`. Keep these rows
-adjacent and in the same group. IDs, not displayed labels, identify the settings.
-The implementation also reads an optional `Pair = OtherModeId` on the primary row,
-but the suffix convention is sufficient and is what QuickslotsForever uses.
+The picker that declares `Pair` owns the composite row and supplies its visible
+label. The target key setting contributes only its key control. If DMM visibility
+hides the key setting, the key control disappears while the picker retains its
+normal full-width row. Pairing is ID-based and does not depend on row order.
+The first two declared modes share one control: its label shows the selected mode,
+and each click switches to the other declared value. An optional third `-1`
+Default mode remains a separate control; clicking the shared control from Default
+selects the first mode. Standalone tab pickers keep one button per value.
 
 A picker without explicit decoration remains a stock control. No mode row is
 required for a standalone keybind. Use matching ordered `PresetValues` and
@@ -292,11 +297,16 @@ callback.
 
 ## Presentation metadata
 
-`DecoType=tab` renders an ordinary picker as right-aligned choices on the
+`ammType=tab` renders an ordinary picker as right-aligned choices on the
 same row as its label. It supports two to eight choices and retains DMM's
 keyboard/controller navigation, pending model and Apply/Restore behavior.
 
-`DecoLevel=0` inherits the existing font. Levels 1–6 use sizes
+Set `ammTabsWidth` to an integer from 160 through 440 to reserve that total
+width in pixels for the horizontal choices. The default grows by option count
+up to 384 pixels. A two-option `ammTabsWidth=440` picker is twice the default
+220-pixel width while retaining 144 pixels for its label.
+
+`ammLevel=0` inherits the existing font. Levels 1–6 use sizes
 22, 16, 15, 14, 12 and 11 respectively. Level1 uses the title color;
 Level2/3 use the heading color; Level4 uses normal body text; Level5/6 use
 muted text, with Level5 at 85% opacity. The property applies to setting labels
@@ -308,32 +318,45 @@ This supports toggles, pickers and sliders; at most one setting per provider may
 use level 1. No separate header flag is required. Providers without a level-one
 setting keep the default title. Mods still implement their settings' behavior.
 
-Categories can declare `DecoHelp` to show Level5 explanatory text under
+Categories can declare `ammHelp` to show Level5 explanatory text under
 the heading. DMM's `VisibleWhen` / `VisibleValues` rules still govern the group.
+
+Set `ammHeading=0` on a category to suppress only that category's heading:
+
+```ini
+[Category.Player Actions]
+ammHeading=0
+```
+
+The category remains a normal DMM group: its rows retain their manifest order,
+visibility rules, navigation and Apply/Restore behavior. Any shared `ammParent`
+heading remains visible while the category has visible rows. `ammHelp` is not
+rendered when its category heading is suppressed. `ammHeading` accepts only
+`0` or `1` and defaults to `1`.
 
 Categories can also share a parent heading without flattening that heading into
 each category label:
 
 ```ini
 [Category.PrimaryWheel]
-DecoParent=Interaction: Independent
-DecoParentLevel=2
-DecoLevel=3
+ammParent=Interaction: Independent
+ammParentLevel=2
+ammLevel=3
 
 [Category.SecondaryWheel]
-DecoParent=Interaction: Independent
-DecoParentLevel=2
-DecoLevel=3
+ammParent=Interaction: Independent
+ammParentLevel=2
+ammLevel=3
 
 [Category.SelectiveBindings]
-DecoParent=Interaction: Selective
-DecoParentLevel=2
-DecoLevel=3
+ammParent=Interaction: Selective
+ammParentLevel=2
+ammLevel=3
 ```
 
-`DecoParent` is the displayed parent label. Categories with the same exact
+`ammParent` is the displayed parent label. Categories with the same exact
 label share one parent heading and retain their own category headings as
-subgroups. `DecoParentLevel` accepts levels 0–6 and defaults to 2; every
+subgroups. `ammParentLevel` accepts levels 0–6 and defaults to 2; every
 category sharing a parent must use the same level. Parent headings do not add
 visibility rules. A provider that wants persistent Independent and Selective
 sections should leave their categories unconditional. If every subgroup under
@@ -343,15 +366,15 @@ For labels that depend on another picker or toggle, settings and categories
 can declare:
 
 ```ini
-DecoLabelWhen=PrimaryWheel
-DecoLabels=0:Secondary Wheel;1:Primary Wheel
+ammLabelWhen=PrimaryWheel
+ammLabels=0:Secondary Wheel;1:Primary Wheel
 ```
 
 Unlisted source values retain the original label. Category ordering is opt-in:
 
 ```ini
-DecoOrderWhen=PrimaryWheel
-DecoOrders=0:20;1:10
+ammOrderWhen=PrimaryWheel
+ammOrders=0:20;1:10
 ```
 
 Only opted-in categories exchange positions, in ascending rank order. Other
@@ -412,33 +435,20 @@ use the original open path. No DMM source files are modified.
 
 ## Fixed mode labels
 
-A keybind can declare `DecoMode=Tap` or `DecoMode=Hold`. This supplies a fixed,
-noninteractive label when its paired mode setting is absent or logically hidden
-by DMM's `VisibleWhen` / `VisibleValues`. When the paired mode is logically
-visible, the normal editable mode picker returns with its existing value.
+A standalone keybind can declare `ammMode=Tap` or `ammMode=Hold`. This supplies
+a fixed, noninteractive label without creating a second setting. Paired pickers
+instead use the picker-owned `Pair` contract described above.
 
-Visibility comes from DMM's model, not the source widget's collapsed state.
-No mode/config value changes to match the fixed label. In particular, Hold is
-only display text; a mod can implement immediate physical hold behavior without
-a Tap/Hold threshold. This metadata does not implement input behavior.
+No mode/config value is created to match the fixed label. In particular, Hold
+is only display text; a mod can implement immediate physical hold behavior
+without a Tap/Hold threshold. This metadata does not implement input behavior.
 
 ```ini
 [Setting.SharedSlot1]
 Id=SharedSlot1
 Type=integer
-DecoType=keybind
-DecoMode=Tap
+ammType=keybind
+ammMode=Tap
 ; Include the ordinary range, default and config fields.
 
-[Setting.SharedSlot1Mode]
-Id=SharedSlot1Mode
-Type=picker
-DecoType=keybind
-VisibleWhen=InteractionMode
-VisibleValues=2
-; Include ordinary 0|1 / Tap|Hold choices and config fields.
 ```
-
-The existing menu update applies proxy changes; no timer is added. A source row
-can briefly become visible during a DMM refresh before that update collapses it.
-It is collapsed only after successful paired-control construction.

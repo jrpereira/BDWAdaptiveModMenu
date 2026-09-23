@@ -46,5 +46,11 @@ jobs:
         run: |
           flags=()
           if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          notes_file="docs/releases/$RELEASE_TAG.md"
+          if [[ -f "$notes_file" ]]; then
+            flags+=(--notes-file "$notes_file")
+          else
+            flags+=(--generate-notes)
+          fi
           gh release create "$RELEASE_TAG" dist/*.zip dist/*.sha256 "${flags[@]}" \
-            --target "$GITHUB_SHA" --title "AdaptiveModMenu $RELEASE_TAG" --generate-notes
+            --target "$GITHUB_SHA" --title "AdaptiveModMenu $RELEASE_TAG"

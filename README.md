@@ -9,7 +9,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 ## Features
 
 - Upgrades Dawnwalker Mod Menu integer settings into interactive key-binding pickers.
-- Combines key bindings with optional Tap/Hold selectors.
+- Combines key bindings with an optional Tap/Hold control that changes mode on each click.
 - Expands mapped presets into their target keys and modes; manual target edits select Custom.
 - Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
 - Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting replaces the default mod header.
@@ -22,11 +22,12 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Keeps decorations attached to their owning rows and recreates them when pages rebuild.
 - Uses menu-scoped updates without a permanent gameplay polling loop.
 - Provides example configurations and source code for learning how to extend existing Unreal UI.
+- Bundles the `menu.fixes` template at `Scripts/fixes.lua` for registration by UE4SSTemplatingEngine.
 - Pairs with UE4SSLuaEventBridge for implementing Enhanced Input and Tap/Hold behavior.
 
 ## Known Issues / Improvements
 
-- Menu updates use 100 ms polling, so visual feedback can lag slightly.
+- Active menu updates use 50 ms polling; updates stop when the menu closes or no usable controls remain.
 - Depends on Mod Menu's structure: changes to its widget layout or lifecycle can break decoration.
 - The lifecycle bootstrap currently supports Dawnwalker Mod Menu 1.0.7; restart the game after it installs or updates the callback patch.
 
@@ -42,13 +43,13 @@ Restart the game after installing or updating it.
 
 ## Add a key-binding control
 
-In your mod's `mod_settings.ini`, define an integer setting and add `DecoType = keybind`:
+In your mod's `mod_settings.ini`, define an integer setting and add `ammType = keybind`:
 
 ```ini
 [Setting.MyAction]
 Id = MyAction
 Type = integer
-DecoType = keybind
+ammType = keybind
 Label = My action
 Group = Controls
 ConfigFile = config.ini
@@ -62,30 +63,31 @@ Default = 75
 
 The stored value is a Windows virtual-key code. In this example, `75` means K; `0` means unbound.
 
-## Add an optional Tap/Hold selector
+## Add an optional mode selector
 
-Immediately after the key setting, add a picker whose ID uses the same name followed by `Mode`. Give it its own decoration flag:
+Add a tab picker and point `Pair` at the key setting. The picker owns the composite row and its visible label:
 
 ```ini
 [Setting.MyActionMode]
 Id = MyActionMode
 Type = picker
-DecoType = keybind
-Label = My action mode
+ammType = tab
+Pair = MyAction
+Label = My action
 Group = Controls
 ConfigFile = config.ini
 ConfigSection = Bindings
 ConfigKey = MyActionMode
-PresetValues = 0|1
-PresetLabels = Tap|Hold
-Default = 0
+PresetValues = 0|3|-1
+PresetLabels = Tap|Hold|Default
+Default = -1
 ```
 
-Keep both settings in the same group.
+Keep both settings in the same group. If DMM hides `MyAction`, AMM hides only the contributed key component; the mode row, its label and its tabs remain visible.
 
 That's it—magic! The key picker and Tap/Hold selector appear together. No registration code is required.
 
-Your mod still implements what the binding does and interprets `0` as Tap and `1` as Hold. Adaptive Mod Menu provides the GUI upgrades, not the input behavior.
+Your mod still interprets the values. Adaptive Mod Menu provides the GUI upgrades, not the input behavior.
 
 It also pairs well with [UE4SSLuaEventBridge](https://github.com/jrpereira/UE4SSLuaEventBridge), which exposes Unreal's Enhanced Input to Lua, including support for Tap/Hold bindings.
 

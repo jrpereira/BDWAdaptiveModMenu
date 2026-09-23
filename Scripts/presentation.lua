@@ -1,5 +1,6 @@
 -- Runs in DMM's Lua state. Uses its existing menu tick and model, never a timer.
 local M={version=1}
+local pairHostMarkerPrefix='AMM_PAIR_HOST_1\n'
 local function trim(s) return (s or ''):match('^%s*(.-)%s*$') end
 local function identityText(value)
     return tostring(value):gsub('%%','%%25'):gsub('\n','%%0A'):gsub('\r','%%0D')
@@ -7,11 +8,12 @@ end
 local function settingIdentity(index,provider,setting)
     local values,labels=setting.values or {},setting.labels or {}
     assert(#values==#labels and #values<=64,'invalid setting identity choices')
-    local fields={'AMM_SETTING_2',tostring(index),identityText(provider.id),identityText(setting.id),
+    local fields={'AMM_SETTING_3',tostring(index),identityText(provider.id),identityText(setting.id),
         setting.kind or '',tostring(setting.minimum or ''),tostring(setting.maximum or ''),
         tostring(setting.step or ''),tostring(setting.decimals or ''),identityText(setting.prefix or ''),
         identityText(setting.suffix or ''),setting.ammKeybind and '1' or '0',
-        identityText(setting.ammFixedMode or ''),identityText(setting.ammPairId or ''),tostring(#values)}
+        identityText(setting.ammFixedMode or ''),identityText(setting.ammPairId or ''),
+        tostring(setting.ammTabsWidth or ''),identityText(setting.ammPairTargetId or ''),tostring(#values)}
     for _,value in ipairs(values) do fields[#fields+1]=identityText(value) end
     for _,label in ipairs(labels) do fields[#fields+1]=identityText(label) end
     local result=table.concat(fields,'\n')
@@ -33,23 +35,31 @@ function M.parse(content,items)
         end
     end
     local byId,groups,parents,seen,count={},{},{},{},0
-    for _,s in ipairs(items) do byId[s.id]=s end
+    for _,s in ipairs(items) do
+        byId[s.id]=s
+        s.ammPairId,s.ammPairIndex,s.ammPairTargetIndex=nil,nil,nil
+    end
     local function level(value)
         if value==nil then return nil end
-        return assert(tonumber(value:match('^[0-6]$')),'DecoLevel must be an integer from 0 through 6')
+        return assert(tonumber(value:match('^[0-6]$')),'ammLevel must be an integer from 0 through 6')
+    end
+    local function flag(value,name)
+        if value==nil then return nil end
+        assert(value=='0' or value=='1',name..' must be 0 or 1')
+        return value=='1'
     end
     local function labelRule(r)
-        if not r.DecoLabelWhen and not r.DecoLabels then return nil end
-        local source=assert(byId[r.DecoLabelWhen],'unknown DecoLabelWhen')
-        assert(source.kind~='slider','DecoLabelWhen requires a picker or toggle')
+        if not r.ammLabelWhen and not r.ammLabels then return nil end
+        local source=assert(byId[r.ammLabelWhen],'unknown ammLabelWhen')
+        assert(source.kind~='slider','ammLabelWhen requires a picker or toggle')
         local result={source=source,values={}}
-        for entry in ((r.DecoLabels or '')..';'):gmatch('(.-);') do
+        for entry in ((r.ammLabels or '')..';'):gmatch('(.-);') do
             local value,label=entry:match('^%s*([^:]+):(.+)$')
             value=tonumber(value)
-            assert(value and label and not result.values[value],'invalid DecoLabels')
+            assert(value and label and not result.values[value],'invalid ammLabels')
             local valid=false
             for _,v in ipairs(source.values) do if v==value then valid=true end end
-            assert(valid,'DecoLabels value outside source choices')
+            assert(valid,'ammLabels value outside source choices')
             result.values[value]=trim(label)
         end
         return result
@@ -57,24 +67,25 @@ function M.parse(content,items)
     for _,r in ipairs(sections) do
         local group=r.name:match('^Category%.(.+)$')
         if group then
-            local order=labelRule({DecoLabelWhen=r.DecoOrderWhen,DecoLabels=r.DecoOrders})
+            local order=labelRule({ammLabelWhen=r.ammOrderWhen,ammLabels=r.ammOrders})
             if order then
                 for value,rank in pairs(order.values) do
                     rank=tonumber(rank)
-                    assert(rank and rank==rank and math.abs(rank)<=1000000,'invalid DecoOrders rank')
+                    assert(rank and rank==rank and math.abs(rank)<=1000000,'invalid ammOrders rank')
                     order.values[value]=rank
                 end
             end
             local parent
-            if r.DecoParent~=nil then
-                local label=trim(r.DecoParent)
-                assert(label~='','DecoParent requires a non-empty label')
-                local font=level(r.DecoParentLevel) or 2
+            if r.ammParent~=nil then
+                local label=trim(r.ammParent)
+                assert(label~='','ammParent requires a non-empty label')
+                local font=level(r.ammParentLevel) or 2
                 parent=parents[label]
-                if parent then assert(parent.font==font,'categories sharing DecoParent must use the same DecoParentLevel')
+                if parent then assert(parent.font==font,'categories sharing ammParent must use the same ammParentLevel')
                 else parent={key=label,label=label,font=font};parents[label]=parent end
-            elseif r.DecoParentLevel~=nil then error('DecoParentLevel requires DecoParent') end
-            groups[group]={font=level(r.DecoLevel),help=r.DecoHelp,labelRule=labelRule(r),order=order,parent=parent}
+            elseif r.ammParentLevel~=nil then error('ammParentLevel requires ammParent') end
+            groups[group]={font=level(r.ammLevel),help=r.ammHelp,labelRule=labelRule(r),order=order,parent=parent,
+                heading=flag(r.ammHeading,'ammHeading')~=false}
         end
         if r.name=='Setting' or r.name:match('^Setting%.') then
             count=count+1
@@ -82,43 +93,53 @@ function M.parse(content,items)
             local s=byId[id]
             if s and not seen[id] then
                 seen[id]=true
-                s.ammFont=level(r.DecoLevel)
-                if r.DecoMode~=nil then
-                    assert(r.DecoMode=='Tap' or r.DecoMode=='Hold','DecoMode must be Tap or Hold')
-                    assert(r.DecoType=='keybind' and s.kind=='slider','DecoMode requires a keybind setting')
-                    s.ammFixedMode=r.DecoMode
-                    s.ammPairId=r.Pair or (id..'Mode')
+                s.ammFont=level(r.ammLevel)
+                if r.ammMode~=nil then
+                    assert(r.ammMode=='Tap' or r.ammMode=='Hold','ammMode must be Tap or Hold')
+                    assert(r.ammType=='keybind' and s.kind=='slider','ammMode requires a keybind setting')
+                    s.ammFixedMode=r.ammMode
                 end
                 s.ammLabelRule=labelRule(r)
-                s.ammTabs,s.ammHeader=nil,nil
-                local hasLevel=r.DecoLevel~=nil
-                local decoration=r.DecoType
-                if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','DecoType must be tab or keybind') end
+                s.ammTabs,s.ammTabsWidth,s.ammHeader,s.ammPairTargetId=nil,nil,nil,nil
+                local hasLevel=r.ammLevel~=nil
+                local decoration=r.ammType
+                if decoration~=nil then assert(decoration=='tab' or decoration=='keybind','ammType must be tab or keybind') end
                 s.ammKeybind=decoration=='keybind'
-                if s.ammKeybind and s.kind=='slider' then s.ammPairId=r.Pair or (id..'Mode') end
                 if decoration=='tab' then
-                    assert(s.kind=='picker','DecoType=tab requires a picker')
-                    assert(#s.values<=8,'DecoType=tab supports at most eight choices')
+                    assert(s.kind=='picker','ammType=tab requires a picker')
+                    assert(#s.values<=8,'ammType=tab supports at most eight choices')
                     s.ammTabs=true
                 end
-                if r.DecoHeader~=nil and not hasLevel then
-                    assert(r.DecoHeader=='0' or r.DecoHeader=='1','DecoHeader must be 0 or 1')
-                    assert(r.DecoHeader=='0' or s.kind=='toggle','DecoHeader=1 requires a toggle')
-                    s.ammHeader=r.DecoHeader=='1'
+                if r.Pair~=nil then
+                    assert(decoration=='tab' and s.kind=='picker','Pair must be declared by an ammType=tab picker')
+                    assert(trim(r.Pair)~='','Pair requires a setting Id')
+                    s.ammPairTargetId=trim(r.Pair)
+                end
+                if r.ammTabsWidth~=nil then
+                    local width=tonumber(r.ammTabsWidth)
+                    assert(decoration=='tab','ammTabsWidth requires ammType=tab')
+                    assert(width and width%1==0 and width>=160 and width<=440,
+                        'ammTabsWidth must be an integer from 160 through 440')
+                    s.ammTabsWidth=width
+                end
+                if r.ammHeader~=nil and not hasLevel then
+                    assert(r.ammHeader=='0' or r.ammHeader=='1','ammHeader must be 0 or 1')
+                    assert(r.ammHeader=='0' or s.kind=='toggle','ammHeader=1 requires a toggle')
+                    s.ammHeader=r.ammHeader=='1'
                 end
                 if hasLevel then s.ammHeader=s.ammFont==1 end
             end
         end
     end
     local headers=0
-    for _,s in ipairs(items) do
+    for index,s in ipairs(items) do
         s.ammGroup=groups[s.group]
-        if s.ammKeybind and s.kind=='slider' then
-            local pair=byId[s.ammPairId]
-            if pair and pair.ammKeybind then
-                assert(pair.kind=='picker','DecoMode paired setting must be a picker')
-                for i,candidate in ipairs(items) do if candidate==pair then s.ammPairIndex=i;break end end
-            end
+        if s.ammPairTargetId then
+            local target=assert(byId[s.ammPairTargetId],'unknown Pair setting')
+            assert(target.kind=='slider' and target.ammKeybind,'Pair target must be an ammType=keybind integer setting')
+            assert(not target.ammPairId,'keybind setting cannot belong to more than one Pair')
+            target.ammPairId=s.id;target.ammPairIndex=index;s.ammPairTargetIndex=nil
+            for i,candidate in ipairs(items) do if candidate==target then s.ammPairTargetIndex=i;break end end
         end
         if s.ammHeader then headers=headers+1 end
     end
@@ -144,7 +165,7 @@ function M.install(choices,controls,pages)
             local label=api.caption(owner,text)
             if constructing then
                 for _,s in ipairs(providers[constructing].choices or {}) do
-                    if text==s.group and s.ammGroup and s.ammGroup.help then
+                    if text==s.group and s.ammGroup and s.ammGroup.heading and s.ammGroup.help then
                         pendingHelp={heading=label,text=s.ammGroup.help};break
                     end
                 end
@@ -163,10 +184,18 @@ function M.install(choices,controls,pages)
         end
         local ui=build(tree,providers,adapted)
         local prepare,show,refresh,tick,clearPresses,isPressed=ui.prepare,ui.show,ui.refresh,ui.tick,ui.clearPresses,ui.isPressed
+        local function styleBackground(tab,hovered)
+            if not tab.background then return end
+            if tab.backgroundHovered==hovered then return end
+            tab.background:SetBrushColor(hovered
+                and {R=0.95,G=0.63,B=0.08,A=0.22}
+                or {R=0.12,G=0.12,B=0.12,A=0.18})
+            tab.backgroundHovered=hovered
+        end
         local function new(kind) return api.construct('/Script/UMG.'..kind,tree) end
         local function add(parent,child) return api.need(parent:AddChild(child),'AMM presentation child') end
-        local function sized(child,width)
-            local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(40)
+        local function sized(child,width,height)
+            local box=new('SizeBox');box:SetWidthOverride(width);box:SetHeightOverride(height or 40)
             local slot=api.need(box:SetContent(child),'AMM presentation size')
             slot:SetHorizontalAlignment(0);slot:SetVerticalAlignment(0)
             return box
@@ -211,16 +240,76 @@ function M.install(choices,controls,pages)
                     local tabs=new('HorizontalBox')
                     row.ammTabs={}
                     local count=#setting.values
-                    local width=math.min(110,384/count)
+                    local paired=setting.ammPairTargetId~=nil
+                    local disablesKey=paired and count>=3 and setting.values[3]==-1
+                    local totalWidth=paired and 150 or (setting.ammTabsWidth or math.min(384,110*count))
+                    local keySpace=paired and 104 or 0
+                    local defaultSpace=paired and 104 or 0
+                    local choices={}
                     for n,value in ipairs(setting.values) do
-                        local button,label=api.button(tree,setting.labels[n]);button.IsFocusable=false
+                        if not paired or n~=2 or count<2 then
+                            local choice={value=value,label=setting.labels[n],isDefault=disablesKey and n==3}
+                            if paired and n==1 and count>=2 then
+                                choice.toggleValues={setting.values[1],setting.values[2]}
+                                choice.toggleLabels={setting.labels[1],setting.labels[2]}
+                            end
+                            choices[#choices+1]=choice
+                        end
+                    end
+                    local modeCount=#choices-(disablesKey and 1 or 0)
+                    local width=totalWidth/modeCount
+                    if paired and count>=2 then
+                        width=modeCount>1 and (totalWidth/2)/(modeCount-1) or totalWidth/2
+                    end
+                    local defaultTabs=disablesKey and new('HorizontalBox') or nil
+                    if paired then row.ammTabsBackgrounds={} end
+                    for _,choice in ipairs(choices) do
+                        local button,label=api.button(tree,choice.label);button.IsFocusable=false
                         label:SetJustification(1);label:SetTextOverflowPolicy(1)
-                        add(tabs,sized(button,width))
-                        row.ammTabs[n]={widget=button,label=label,value=value,pressed=false,pointer=false}
+                        -- Stretch the text block across the fixed-width button, then
+                        -- let centered text justification position its contents.
+                        label.Slot:SetHorizontalAlignment(0);label.Slot:SetVerticalAlignment(2)
+                        local isDefault=choice.isDefault
+                        local visible=button
+                        local background
+                        if paired then
+                            background=new('Border')
+                            background:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.18})
+                            api.need(background:SetContent(button),'AMM paired tab background')
+                            row.ammTabsBackgrounds[#row.ammTabsBackgrounds+1]=background
+                            visible=background
+                        end
+                        local choiceWidth=choice.toggleValues and totalWidth/2 or width
+                        add(isDefault and defaultTabs or tabs,
+                            sized(visible,isDefault and 96 or choiceWidth,choice.toggleValues and 32 or nil))
+                        row.ammTabs[#row.ammTabs+1]={widget=button,label=label,value=choice.value,
+                            toggleValues=choice.toggleValues,toggleLabels=choice.toggleLabels,
+                            pressed=false,pointer=false,background=background}
                     end
                     local overlay=row.background:GetParent()
+                    if paired and count>=2 and modeCount==1 then
+                        tabs:SetRenderTranslation({X=-totalWidth/2,Y=0})
+                    end
                     local slot=add(overlay,tabs);slot:SetHorizontalAlignment(3);slot:SetVerticalAlignment(2)
-                    row.widget:GetParent():SetWidthOverride(584-width*count)
+                    if paired then row.ammTabsBackground=row.ammTabsBackgrounds[1] end
+                    if defaultTabs then
+                        defaultTabs:SetRenderTranslation({X=-(totalWidth+8+96+8),Y=0})
+                        row.ammDefaultBackground=defaultTabs
+                        local defaultSlot=add(overlay,defaultTabs)
+                        defaultSlot:SetHorizontalAlignment(3);defaultSlot:SetVerticalAlignment(2)
+                    end
+                    row.widget:GetParent():SetWidthOverride(584-totalWidth-keySpace-defaultSpace)
+                    if paired then
+                        local hostBox=new('SizeBox');hostBox:SetWidthOverride(96);hostBox:SetHeightOverride(32)
+                        local host=new('Overlay');api.need(hostBox:SetContent(host),'AMM pair host content')
+                        local marker=api.caption(tree,pairHostMarkerPrefix..setting.ammPairTargetId)
+                        marker:SetVisibility(1);add(host,marker)
+                        hostBox:SetRenderTranslation({X=-(totalWidth+8),Y=0})
+                        local hostSlot=add(overlay,hostBox);hostSlot:SetHorizontalAlignment(3);hostSlot:SetVerticalAlignment(2)
+                        row.ammPairHost,row.ammPairHostBox,row.ammTabsWidth,row.ammPairDisablesKey=
+                            host,hostBox,totalWidth,disablesKey
+                        panel.rows[setting.ammPairTargetIndex].ammPairOwner=i
+                    end
                     for _,part in ipairs(row.parts) do part.widget:GetParent():SetVisibility(1) end
                 end
             end
@@ -229,6 +318,9 @@ function M.install(choices,controls,pages)
                 local setting=providers[index].choices[heading.first]
                 if setting.ammGroup then
                     M.style(heading.widget,setting.ammGroup.font,api)
+                    if not setting.ammGroup.heading then
+                        heading.widget:SetVisibility(1);heading.visible=false
+                    end
                     local parent=setting.ammGroup.parent
                     if parent then
                         heading.ammParent=parent
@@ -308,6 +400,13 @@ function M.install(choices,controls,pages)
             local logicalVisibility
             for i,row in ipairs(self.panels[self.active].rows) do
                 local setting=self.model.items[i]
+                if setting.ammPairTargetIndex then
+                    logicalVisibility=logicalVisibility or self.model:visibility()
+                    local keyVisible=logicalVisibility[setting.ammPairTargetIndex]==true
+                    row.ammPairHostBox:SetVisibility(keyVisible and 0 or 1)
+                    row.widget:GetParent():SetWidthOverride(584-row.ammTabsWidth-(keyVisible and 104 or 0))
+                    self.panels[self.active].rows[setting.ammPairTargetIndex].wrapper:SetVisibility(1)
+                end
                 if row.ammModeState then
                     logicalVisibility=logicalVisibility or self.model:visibility()
                     local target=setting.ammPairIndex
@@ -325,7 +424,14 @@ function M.install(choices,controls,pages)
                 for _,tab in ipairs(row.ammTabs or {}) do
                     local mapping=self.model.items[i].ammMapping
                     local enabled=not self.model.error and (not mapping or tab.value~=mapping.custom)
-                    local selected=self.model.pending[i]==tab.value
+                    local current=self.model.pending[i]
+                    local selected=tab.toggleValues and
+                        (current==tab.toggleValues[1] or current==tab.toggleValues[2]) or current==tab.value
+                    if tab.toggleValues then
+                        local display=current==tab.toggleValues[2] and tab.toggleLabels[2] or tab.toggleLabels[1]
+                        if tab.display~=display then api.setText(tab.label,display);tab.display=display end
+                        styleBackground(tab,tab.hovered==true)
+                    end
                     if tab.selected~=selected or tab.enabled~=enabled then
                         api.Theme.textColor(tab.label,selected and 'menuActive' or 'body')
                         tab.widget:SetIsEnabled(enabled)
@@ -346,8 +452,12 @@ function M.install(choices,controls,pages)
                     local row=self.panels[self.active].rows[i]
                     if row.visible and not row.ammHeader then shown=true;break end
                 end
-                if not shown and heading.visible then heading.widget:SetVisibility(1);heading.visible=false end
                 local group=setting.ammGroup
+                heading.ammContentVisible=shown
+                local headingShown=shown and (not group or group.heading)
+                if heading.visible~=headingShown then
+                    heading.widget:SetVisibility(headingShown and 0 or 1);heading.visible=headingShown
+                end
                 if group and group.labelRule then
                     local text=dynamic(group.labelRule,self.model,setting.group)
                     if heading.ammText~=text then api.setText(heading.widget,text);heading.ammText=text end
@@ -408,7 +518,7 @@ function M.install(choices,controls,pages)
                     if entry.parentWidget then
                         local shown=false
                         for _,block in ipairs(entry.blocks) do
-                            if block.heading and block.heading.visible then shown=true;break end
+                            if block.heading and block.heading.ammContentVisible then shown=true;break end
                         end
                         if entry.parentVisible~=shown then
                             entry.parentWidget:SetVisibility(shown and 4 or 1);entry.parentVisible=shown
@@ -418,16 +528,23 @@ function M.install(choices,controls,pages)
                 if self.visibleRows then
                     local visible={}
                     -- Header controls precede scroll content for navigation.
-                    for i,row in ipairs(panel.rows) do if row.ammHeader and row.visible then visible[#visible+1]=i end end
+                    for i,row in ipairs(panel.rows) do if row.ammHeader and row.visible and not row.ammPairOwner then visible[#visible+1]=i end end
                     for _,block in ipairs(panel.ammOrderedBlocks or panel.ammBlocks) do
                         if block.heading then
                             for i=block.heading.first,block.heading.last do
-                                if panel.rows[i].visible and not panel.rows[i].ammHeader then visible[#visible+1]=i end
+                                if panel.rows[i].visible and not panel.rows[i].ammHeader and not panel.rows[i].ammPairOwner then visible[#visible+1]=i end
                             end
                         end
                     end
                     self.visibleRows=visible;self:wireNavigation(self.footer)
                 end
+            end
+            if self.visibleRows and not panel.ammBlocks then
+                local navigation={}
+                for i,row in ipairs(panel.rows) do
+                    if row.visible and not row.ammPairOwner then navigation[#navigation+1]=i end
+                end
+                self.visibleRows=navigation;self:wireNavigation(self.footer)
             end
             if pageReady then
                 -- Visibility changes do not reconstruct DMM's page or change its
@@ -442,10 +559,19 @@ function M.install(choices,controls,pages)
                 for i,row in ipairs(self.panels[self.active].rows) do
                     if row.visible then
                         for _,tab in ipairs(row.ammTabs or {}) do
+                            tab.hovered=tab.widget:IsHovered()==true
+                            styleBackground(tab,tab.hovered)
+                        end
+                        for _,tab in ipairs(row.ammTabs or {}) do
                             local clicked
-                            clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.widget:IsHovered())
+                            clicked,tab.pressed,tab.pointer=released(tab.widget,tab.pressed,tab.pointer,tab.hovered)
                             if clicked and tab.enabled then
-                                self:select(i,false);self.model:set(i,tab.value);self:refresh()
+                                local value=tab.value
+                                if tab.toggleValues then
+                                    value=self.model.pending[i]==tab.toggleValues[1]
+                                        and tab.toggleValues[2] or tab.toggleValues[1]
+                                end
+                                self:select(i,false);self.model:set(i,value);self:refresh()
                                 if api.feedback then api.feedback('Change') end
                                 return tick(self,queued,released,controller)
                             end
@@ -506,6 +632,43 @@ function M.install(choices,controls,pages)
                 return api.construct(...)
             end
             local page=buildPages(tree,providers,status,adapted)
+            M.style(page.filterLabel,1,api)
+            page.filterLabel.Slot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})
+            local header=assert(page.filterButton:GetParent(),'AMM mod-browser header')
+            local list=assert(header:GetParent(),'AMM mod-browser page')
+            local headerName=header:GetFullName()
+            local children={}
+            for n=0,list:GetChildrenCount()-1 do
+                local child=list:GetChildAt(n)
+                local padding=child.Slot.Padding
+                children[#children+1]={widget=child,padding={
+                    Left=padding.Left,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom}}
+            end
+            list:ClearChildren()
+            local inserted=false
+            for _,child in ipairs(children) do
+                local slot=api.need(list:AddChild(child.widget),'AMM mod-browser child')
+                slot:SetPadding(child.padding)
+                if child.widget:GetFullName()==headerName then
+                    local line=api.construct('/Script/UMG.SizeBox',tree)
+                    line:SetWidthOverride(572);line:SetHeightOverride(2)
+                    api.need(line:SetContent(api.Theme.image(tree,api.theme,'horizontal',api)),'AMM mod-browser divider')
+                    api.need(list:AddChild(line),'AMM mod-browser divider slot')
+                    inserted=true
+                end
+            end
+            assert(inserted,'AMM mod-browser header placement')
+            for _,row in ipairs(page.allRows or {}) do
+                local label=api.need(row.widget:GetContent(),'AMM mod-list label')
+                local provider=providers[row.providerIndex]
+                local browserLevel=provider and provider.ammBrowserLevel or 2
+                if not styles[browserLevel] then browserLevel=2 end
+                local indent=provider and provider.ammBrowserIndent
+                if indent==nil then indent=0 end
+                if type(indent)~='number' or indent< -80 or indent>80 then indent=0 end
+                M.style(label,browserLevel,api)
+                label.Slot:SetPadding({Left=indent,Top=4,Right=12,Bottom=4})
+            end
             page.controls.ammHeaderHost=host
             page.controls.ammHeaderTitle=title
             return page

@@ -50,13 +50,16 @@ local function selectedName(selector)
 end
 
 local textLib=nil
+local function ftext(text)
+    if not valid(textLib) then textLib=StaticFindObject('/Script/Engine.Default__KismetTextLibrary') end
+    if not valid(textLib) then return end
+    return textLib:Conv_StringToText(text)
+end
 local function setText(widget,text)
     -- SetText requires FText; Lua pcall cannot contain a native access violation.
     local ok,result=pcall(function()
         if not valid(widget) then return false end
-        if not valid(textLib) then textLib=StaticFindObject('/Script/Engine.Default__KismetTextLibrary') end
-        if not valid(textLib) then return false end
-        local value=textLib:Conv_StringToText(text)
+        local value=ftext(text)
         if value==nil then return false end
         widget:SetText(value)
         return true
@@ -119,6 +122,13 @@ local function displayName(name)
 end
 
 local function styleNormal(instance)
+    if instance.keyEnabled==false then
+        for _,edge in ipairs(instance.keyEdges or {}) do
+            pcall(function() edge:SetBrushColor({R=0.35,G=0.34,B=0.32,A=0.45}) end)
+        end
+        if valid(instance.keyInner) then instance.keyInner:SetBrushColor({R=0.12,G=0.12,B=0.12,A=0.12}) end
+        return
+    end
     for _,edge in ipairs(instance.keyEdges or {}) do pcall(function() edge:SetBrushColor({R=0.55,G=0.52,B=0.46,A=0.85}) end) end
     if valid(instance.keyInner) then
         instance.keyInner:SetBrushColor(instance.keyHovered
@@ -132,7 +142,7 @@ local function styleSelecting(instance)
     if valid(instance.keyInner) then pcall(function() instance.keyInner:SetBrushColor({R=0.95,G=0.63,B=0.08,A=0.16}) end) end
 end
 
-function M.decorate(row,descriptor,log)
+function M.decorate(row,descriptor,log,host)
     if not row or not valid(row.slider) then return nil,'invalid numeric row' end
     local tree=row.tree
 
@@ -183,11 +193,15 @@ function M.decorate(row,descriptor,log)
     local selector=construct('/Script/UMG.InputKeySelector',tree)
     selector:SetAllowGamepadKeys(false); selector:SetAllowModifierKeys(true)
     selector:SetEscapeKeys({{KeyName=FName('Escape')}})
+    local noKeyText=ftext('')
+    assert(noKeyText~=nil,'empty key text unavailable')
+    selector:SetNoKeySpecifiedText(noKeyText)
     selector:SetRenderOpacity(0.0)
     local ss=need(keyOverlay:AddChildToOverlay(selector),'selector slot')
     ss:SetHorizontalAlignment(0); ss:SetVerticalAlignment(0)
 
-    local hostSlot=need(row.surface:AddChildToOverlay(keyBox),'key host slot')
+    local keyHost=host or row.surface
+    local hostSlot=need(keyHost:AddChildToOverlay(keyBox),'key host slot')
     hostSlot:SetHorizontalAlignment(1); hostSlot:SetVerticalAlignment(2)
 
     pcall(function() row.slider:SetRenderOpacity(0) end)
@@ -200,7 +214,9 @@ function M.decorate(row,descriptor,log)
 
     -- Every key uses the same 584px row: label | key | gap | mode.
     -- An absent mode leaves blank space, without creating an input widget.
-    row.labelBox:SetWidthOverride(330);row.surfaceBox:SetWidthOverride(254);row.valueBox:SetWidthOverride(0)
+    if not host then
+        row.labelBox:SetWidthOverride(330);row.surfaceBox:SetWidthOverride(254);row.valueBox:SetWidthOverride(0)
+    end
 
     local stateWidget=construct('/Script/UMG.TextBlock',tree)
     stateWidget:SetVisibility(1)
@@ -302,8 +318,9 @@ end
 -- Called only after page readiness. Existing children are the authority for
 -- decoration presence; runtime bindings can be discarded at every scope change.
 function M.adopt(row,descriptor,modeRow,clicks)
-    for i=0,Discovery.childCount(row.surface)-1 do
-        local box=Discovery.childAt(row.surface,i)
+    local keyHost=modeRow and modeRow.pairHost or row.surface
+    for i=0,Discovery.childCount(keyHost)-1 do
+        local box=Discovery.childAt(keyHost,i)
         local overlay=Discovery.contentOf(box)
         local marker=overlay and Discovery.childAt(overlay,6)
         local text=marker and Discovery.textOf(marker)
@@ -398,6 +415,21 @@ function M.tick(instance,log)
         if valid(source) and source:GetVisibility()~=1 then source:SetVisibility(1) end
     end
 
+    local d=instance.descriptor
+    if d.disabledMode~=nil and type(d.modeValues)=='table' and valid(instance.modeNav) then
+        local position=math.floor((tonumber(instance.modeNav:GetValue()) or 0)+0.5)+1
+        local enabled=d.modeValues[position]~=d.disabledMode
+        if instance.keyEnabled~=enabled then
+            instance.keyEnabled=enabled
+            instance.selector:SetIsEnabled(enabled)
+            if valid(instance.keyBox) then instance.keyBox:SetRenderOpacity(enabled and 1 or 0.45) end
+            if not enabled then
+                instance.wasSelecting=false;instance.captureName=nil;instance.keyHovered=false
+            end
+            styleNormal(instance)
+        end
+    end
+
     -- Pointer feedback belongs to the key hit target, not the whole stock row.
     -- Capture styling wins until capture ends, even if the pointer moves away.
     local keyHovered=instance.selector:IsHovered()==true
@@ -419,7 +451,6 @@ function M.tick(instance,log)
         end
     end
 
-    local d=instance.descriptor
     local id=d.providerId..'.'..d.settingId
     local normalized=instance.row.slider:GetValue()
     local backingValue=math.floor(d.minimum+normalized*(d.maximum-d.minimum)+0.5)
@@ -427,6 +458,11 @@ function M.tick(instance,log)
     -- Presentation follows the current backing value, including unsupported codes.
     -- Keep its successful-write cache separate from accepted input state.
     instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+    if instance.keyEnabled==false then
+        if not instance.initialized or backingName~=instance.lastBackingName then syncSelector(instance,backingName) end
+        instance.initialized=true
+        return true
+    end
     local name,readError,hasModifiers=selectedName(instance.selector)
     if not name then
         if not instance.readWarning then log('SELECTED_KEY_READ_FAILED',id..' '..tostring(readError)); instance.readWarning=true end
@@ -464,6 +500,14 @@ function M.tick(instance,log)
         instance.captureName=nil
     elseif name=='Escape' then
         -- Defensive path if native cancellation was missed between monitor ticks.
+        syncSelector(instance,backingName)
+        instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
+        return true
+    end
+
+    if ended and name=='None' then
+        -- Empty is not a user-selectable binding. Paired controls use their
+        -- explicit Default mode to disable capture without clearing the key.
         syncSelector(instance,backingName)
         instance.keyDisplayText=backingName and displayName(backingName) or tostring(backingValue)
         return true
@@ -549,6 +593,8 @@ local function transactional(fn,rowOf,isPair)
     return function(...)
         local args={...}
         local row=rowOf(args)
+        local root=row.surface
+        if not isPair and valid(args[4]) then root=args[4] end
         local receipt={saved={},roots={}}
         local priorState,priorText
         if isPair then
@@ -571,12 +617,12 @@ local function transactional(fn,rowOf,isPair)
             end
         end
         if isPair then save(args[2].wrapper,'GetVisibility','SetVisibility') end
-        local count=Discovery.childCount(row.surface)
+        local count=Discovery.childCount(root)
         for i=0,count-1 do save(Discovery.childAt(row.surface,i),'GetRenderOpacity','SetRenderOpacity') end
         local ok,result,err=pcall(fn,table.unpack(args))
         local recorded,recordError=pcall(function()
-            for i=count,Discovery.childCount(row.surface)-1 do
-                receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(row.surface,i))
+            for i=count,Discovery.childCount(root)-1 do
+                receipt.roots[#receipt.roots+1]=identity(Discovery.childAt(root,i))
             end
         end)
         if ok and result and recorded then
@@ -586,8 +632,8 @@ local function transactional(fn,rowOf,isPair)
         -- Still inside this synchronous construction transaction: remove attached
         -- roots directly even if recording their primitive identities failed.
         local removed=true
-        for i=Discovery.childCount(row.surface)-1,count,-1 do
-            local clean=pcall(function() Discovery.childAt(row.surface,i):RemoveFromParent() end)
+        for i=Discovery.childCount(root)-1,count,-1 do
+            local clean=pcall(function() Discovery.childAt(root,i):RemoveFromParent() end)
             if not clean then removed=false end
         end
         receipt.roots={}
