@@ -200,10 +200,11 @@ assert(#page.browserList.children==2 and page.browserList.children[2]:GetContent
     'Mod-browser title must have a themed divider immediately beneath it')
 assert(page.filterLabel.Font.Size==page.controls.ammHeaderTitle.Font.Size and
     page.filterLabel.color==page.controls.ammHeaderTitle.color,'Compatible Mods must use the mod-title style')
-assert(page.ammTestControlArea.children[1]==page.modTitle
+assert(page.ammTestControlArea.children[1]==page.controls.ammHeaderHost
     and page.ammTestControlArea.children[2]==page.ammTestDivider
-    and page.ammTestControlArea.children[3]==page.controls.ammHeaderHost,
-    'Mod title must remain above the divider with level-one controls below it')
+    and page.controls.ammHeaderHost.children[1]==page.modTitle
+    and page.modTitle.visible==4,
+    'Mod title must share the first row with the picker above the divider')
 page:refresh(false)
 assert(page.filterLabel.text=='All Mods' and page.filterLabel.Font.Size==22 and page.filterLabel.color=='title',
     'Filter text changes must retain the mod-title style')
@@ -371,10 +372,14 @@ local pickerHeaderSchema=schema:gsub('Id=Primary\nammType=tab\nammLevel=2',
     'Id=Enabled\nammLevel=2')
 M.parse(pickerHeaderSchema,items)
 local pickerHeader=controls.build(widget(),{{choices=items}},api)
-pickerHeader.ammHeaderHost=widget();pickerHeader:show(1)
+pickerHeader.ammHeaderHost=page.controls.ammHeaderHost
+pickerHeader.ammHeaderTitle=page.modTitle
+pickerHeader:show(1)
 assert(pickerHeader.panels[1].rows[1].ammHeader
     and pickerHeader.panels[1].rows[1].ammLabel.Slot.Padding.Left==0
-    and pickerHeader.panels[1].rows[1].ammLabel.text=='Player Quickslots'
+    and pickerHeader.panels[1].rows[1].ammLabel.visible==1
+    and page.controls.ammHeaderHost.children[1]==pickerHeader.panels[1].rows[1].wrapper
+    and page.controls.ammHeaderHost.children[2]==page.modTitle
     and pickerHeader.panels[1].rows[4].ammLabel.Slot.Padding.Left==20,
-    'Level-one picker must show Player Quickslots below the divider without indentation')
+    'Level-one picker must share the title row above the divider without a second label')
 print('PASS nested headings, tab clicks, selected state, font levels, dynamic labels/order, page reuse and closed-menu inactivity')

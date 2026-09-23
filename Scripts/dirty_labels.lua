@@ -170,7 +170,9 @@ function M.new(log)
             local byRow={}
             for _,row in ipairs(rows) do
                 local shell=row.overlay or row.shell
-                if Discovery.valid(shell) and Discovery.valid(row.labelWidget) and Discovery.valid(row.valueWidget) then
+                if not (row.dmmSetting and row.dmmSetting.ammHeader)
+                    and Discovery.valid(shell) and Discovery.valid(row.labelWidget)
+                    and Discovery.valid(row.valueWidget) then
                     local valueId=Discovery.address(row.valueWidget)
                     local record={value=routes[valueId],label=routes[Discovery.address(row.labelWidget)],
                         shell=routes[Discovery.address(shell)],setting=row.dmmSetting}

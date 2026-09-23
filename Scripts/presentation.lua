@@ -241,10 +241,6 @@ function M.install(choices,controls,pages)
                     slot:SetPadding({Left=0,Top=padding.Top,Right=padding.Right,Bottom=padding.Bottom})
                 end
                 if setting.ammHeader and ui.ammHeaderHost then
-                    local label=setting.group and setting.group~='' and setting.group~='Settings'
-                        and (setting.group..' '..setting.label) or setting.label
-                    api.setText(row.ammLabel,label)
-                    row.ammLabelText=label
                     assert(not panel.ammHeader,'only one level-one setting per provider')
                     local placeholder=new('SizeBox')
                     local path=assert(row.wrapper:GetFullName():match('^%S+ (.+)$'))
@@ -260,7 +256,14 @@ function M.install(choices,controls,pages)
                     end
                     panel.scroll:ClearChildren()
                     for _,child in ipairs(children) do add(panel.scroll,child.widget):SetPadding(child.padding) end
+                    row.ammLabel:SetVisibility(1)
                     add(ui.ammHeaderHost,row.wrapper)
+                    local title=ui.ammHeaderTitle
+                    if title then
+                        assert(ui.ammHeaderHost:RemoveChild(title),'AMM page title relocation')
+                        local titleSlot=add(ui.ammHeaderHost,title)
+                        titleSlot:SetHorizontalAlignment(1);titleSlot:SetVerticalAlignment(2)
+                    end
                     row.ammHeader=true;row.ammPlaceholder=placeholder;panel.ammHeader=row
                 end
                 if setting.ammTabs then
@@ -637,7 +640,7 @@ function M.install(choices,controls,pages)
             local page=buildPages(tree,providers,status,api)
             local title=assert(page.modTitle,'AMM page title')
             local parent=assert(title:GetParent(),'AMM page header parent')
-            local host=api.construct('/Script/UMG.HorizontalBox',tree)
+            local host=api.construct('/Script/UMG.Overlay',tree)
             local children={}
             for n=0,parent:GetChildrenCount()-1 do
                 local child=parent:GetChildAt(n)
@@ -649,9 +652,11 @@ function M.install(choices,controls,pages)
                 'AMM page header layout')
             parent:ClearChildren()
             for index,child in ipairs(children) do
-                api.need(parent:AddChild(child.widget),'AMM page header child'):SetPadding(child.padding)
-                if index==2 then api.need(parent:AddChild(host),'AMM controls below divider') end
+                api.need(parent:AddChild(index==1 and host or child.widget),'AMM page header child')
+                    :SetPadding(child.padding)
             end
+            api.need(host:AddChild(title),'AMM page title')
+            title:SetVisibility(4)
             M.style(title,1,api)
             M.style(page.filterLabel,1,api)
             page.filterLabel.Slot:SetPadding({Left=0,Top=0,Right=0,Bottom=0})

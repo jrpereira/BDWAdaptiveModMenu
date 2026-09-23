@@ -12,7 +12,7 @@ The source also serves as a practical example of extending existing Unreal UI: f
 - Combines key bindings with an optional Tap/Hold control that changes mode on each click.
 - Expands mapped presets into their target keys and modes; manual target edits select Custom.
 - Shows changed settings with a left-hand star and italic label. Preset selection establishes a visual baseline; subsequent edits mark only the targets changed by the user.
-- Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting appears beneath the mod page title and divider.
+- Renders pickers as right-aligned tabs and applies six typography levels. A level-one setting shares the mod page title row above the divider.
 - Supports conditional group help, value-dependent labels and category ordering while preserving existing setting IDs.
 - Supports metadata-based integration through `mod_settings.ini`—no registration code required.
 - Preserves Mod Menu's Apply, Reset, and configuration-saving behavior.
