@@ -3,29 +3,33 @@ local M={version=1}
 local function trim(value) return (value or ''):match('^%s*(.-)%s*$') end
 
 function M.parse(content,items)
-    local current,marked,seen=nil,0,{}
+    local current,marked,sections=nil,0,0
+    local byId={}
+    for _,item in ipairs(items) do byId[item.id]=item end
+    local function finish()
+        if not current or current.ammNavigation==nil then return end
+        assert(current.ammNavigation=='1','ammNavigation must be 1')
+        local item=assert(byId[current.Id or ('setting_'..sections)],
+            'navigation picker setting unavailable')
+        assert(item.kind=='picker','ammNavigation requires a picker')
+        assert(not item.targets and not current.MappedPresetTargets,
+            'navigation picker cannot own preset targets')
+        marked=marked+1
+        assert(marked<=1,'only one navigation picker per provider')
+        item.ammNavigation=true
+    end
     for line in (content..'\n'):gmatch('([^\n]*)\n') do
         local section=trim(line):match('^%[([^%]]+)%]$')
         if section then
+            finish()
             current=(section=='Setting' or section:match('^Setting%.')) and {} or nil
-            if current then seen[#seen+1]=current end
+            if current then sections=sections+1 end
         elseif current then
             local key,value=line:match('^%s*([^=]+)=(.*)$')
             if key then current[trim(key)]=trim(value) end
         end
     end
-    assert(#seen==#items,'navigation metadata setting count mismatch')
-    for index,raw in ipairs(seen) do
-        if raw.ammNavigation~=nil then
-            assert(raw.ammNavigation=='1','ammNavigation must be 1')
-            assert(items[index].kind=='picker','ammNavigation requires a picker')
-            assert(not items[index].targets and not raw.MappedPresetTargets,
-                'navigation picker cannot own preset targets')
-            marked=marked+1
-            assert(marked<=1,'only one navigation picker per provider')
-            items[index].ammNavigation=true
-        end
-    end
+    finish()
     return items
 end
 
@@ -69,7 +73,9 @@ function M.open(provider,open)
         if i==index then self.committed[index]=self.pending[index] end
     end
     function model:reset(i)
+        local view=i==nil and self.pending[index]
         reset(self,i)
+        if view~=nil then self.pending[index]=view end
         if i==nil or i==index then self.committed[index]=self.pending[index] end
     end
     function model:apply()

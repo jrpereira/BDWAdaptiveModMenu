@@ -60,8 +60,17 @@ assert(not model:dirty())
 model:restore()
 assert(model.pending[1]==1,'Restore must retain the navigation view')
 model:reset()
-assert(not model:dirty() or model.pending[2]~=model.committed[2],
-    'navigation reset must not create dirty state')
+assert(model.pending[1]==1 and model.committed[1]==1,
+    'Reset must retain the current navigation view')
+assert(model.pending[2]==4 and model:dirty(),
+    'Reset must still reset persistent settings')
+model:restore()
+assert(model.pending[1]==1 and model.pending[2]==5 and not model:dirty())
+local unsupported=manifest:gsub('%[Setting.View%]',
+    '[Setting.Ignored]\nType=unsupported\nId=Ignored\n[Setting.View]')
+local withIgnored=Choices.parse(unsupported)
+assert(#withIgnored==2 and withIgnored[1].ammNavigation,
+    'Unsupported settings ignored by DMM must not break navigation parsing')
 local plan=assert(InitConfig.plan(provider,manifest,Choices,Choices.fs,items))
 assert(not plan.content:find('View=',1,true),'config initialization must omit navigation')
 print('Navigation picker remains transient, controls visibility and never writes a config key')
